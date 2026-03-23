@@ -11,26 +11,52 @@ class OpenAIJsonWrapper:
     用户只需提供数据结构定义（dict/list），框架会自动拼接 System Prompt 并解析返回。
     """
 
-    def __init__(self, client: Any, model: str = "gpt-3.5-turbo", target_structure: Optional[Any] = None):
+    def __init__(
+        self, 
+        client: Any, 
+        model: str = "gpt-3.5-turbo", 
+        target_structure: Optional[Any] = None,
+        requirements: Optional[Union[str, List[str]]] = None,
+        background: Optional[str] = None
+    ):
         """
         :param client: OpenAI 风格的客户端对象 (需具备 chat.completions.create 方法)
         :param model: 默认使用的模型名称
         :param target_structure: 默认的输出结构定义
+        :param requirements: 默认的特定需求说明
+        :param background: 默认的背景信息
         """
         self.client = client
         self.model = model
         self.target_structure = target_structure
+        self.requirements = requirements
+        self.background = background
 
-    def _build_system_prompt(self, target_structure: Any) -> str:
+    def _build_system_prompt(self, target_structure: Any, requirements: Optional[Union[str, List[str]]] = None, background: Optional[str] = None) -> str:
         structure_str = json.dumps(target_structure, indent=2, ensure_ascii=False)
-        return (
+        prompt = (
             "You are a helpful assistant that MUST output your response in a specific JSON format.\n"
-            f"The required JSON structure is:\n{structure_str}\n\n"
+        )
+        
+        if background:
+            prompt += f"\nBackground Information:\n{background}\n"
+            
+        prompt += f"\nThe required JSON structure is:\n{structure_str}\n\n"
+        
+        if requirements:
+            if isinstance(requirements, list):
+                req_text = "\n".join([f"- {r}" for r in requirements])
+            else:
+                req_text = requirements
+            prompt += f"Specific Requirements:\n{req_text}\n\n"
+            
+        prompt += (
             "Rules:\n"
             f"1. Your final JSON data MUST be wrapped between '{TOOL_MARKER_START}' and '{TOOL_MARKER_END}' markdown blocks.\n"
             "2. Everything before the code block is considered your reasoning or conversational text.\n"
             "3. Ensure the JSON inside the block is valid and matches the requested structure strictly.\n"
         )
+        return prompt
 
     def _parse_content(self, text: str) -> Tuple[str, Any, Optional[str]]:
         """
@@ -82,6 +108,8 @@ class OpenAIJsonWrapper:
         self, 
         messages: List[Dict[str, str]], 
         target_structure: Optional[Any] = None, 
+        requirements: Optional[Union[str, List[str]]] = None,
+        background: Optional[str] = None,
         model: Optional[str] = None,
         **kwargs
     ) -> Dict[str, Any]:
@@ -90,18 +118,22 @@ class OpenAIJsonWrapper:
         
         :param messages: 对话上下文
         :param target_structure: 希望获取的 JSON 模板/定义（若为 None 则使用实例初始化时的值）
+        :param requirements: 特定需求说明 (str 或 list)
+        :param background: 背景背景知识/上下文 (str)
         :param model: 模型名称（若为 None 则使用实例初始化时的值）
         :return: 包含 'reasoning', 'data', 'raw', 'error' 的字典
         """
         # 优先级：方法参数 > 初始化参数
         target = target_structure if target_structure is not None else self.target_structure
+        reqs = requirements if requirements is not None else self.requirements
+        bg = background if background is not None else self.background
         selected_model = model if model is not None else self.model
 
         if target is None:
             raise ValueError("target_structure must be provided either in __init__ or in chat()")
 
         # 复制消息列表并注入系统提示
-        prompt = self._build_system_prompt(target)
+        prompt = self._build_system_prompt(target, requirements=reqs, background=bg)
         
         new_messages = []
         has_system = False

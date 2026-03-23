@@ -37,10 +37,22 @@ def test_real_openai_wrapper():
         {"role": "user", "content": "GitHub Copilot 是一款非常棒的 AI 编程助手，它能极大地提高代码生产力，虽然偶尔会有小瑕疵，但整体瑕不掩瑜。"}
     ]
     
+    requirements = [
+        "情感分析必须细化到分值",
+        "key_entities 至少提取两个",
+        "response_suggestion 必须是中文"
+    ]
+    
+    background = "你是一个专业级的产品评论分析专家，擅长从用户反馈中提取结构化洞察。"
+    
     print("--- 正在发送请求到 LLM ---")
     
-    # 现在 chat 方法不需要重复传 model 和 structure
-    result = wrapper.chat(messages=messages)
+    # 测试新增的 requirements 和 background 参数
+    result = wrapper.chat(
+        messages=messages,
+        requirements=requirements,
+        background=background
+    )
     
     print("\n--- 解析结果 ---")
     if not result["error"]:
