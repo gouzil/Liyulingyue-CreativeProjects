@@ -1,0 +1,57 @@
+import os
+import json
+from openai import OpenAI
+from OpenAIJsonWrapper import OpenAIJsonWrapper
+
+def test_real_openai_wrapper():
+    # 优先从环境变量获取配置，参考 OpenAIProxy.py 的默认值
+    api_key = os.getenv("OPENAI_API_KEY", "your-api-key-here")
+    base_url = os.getenv("OPENAI_BASE_URL", "https://aistudio.baidu.com/llm/lmapi/v3")
+    model_name = os.getenv("OPENAI_MODEL_NAME", "ernie-4.5-21b-a3b")  # 可根据实际情况修改
+    
+    if api_key == "your-api-key-here":
+        print("警告: 未检测到 OPENAI_API_KEY 环境变量，请确保已设置或手动修改脚本逻辑。")
+    
+    # 1. 初始化真实的 OpenAI 客户端
+    client = OpenAI(api_key=api_key, base_url=base_url)
+    
+    # 2. 定义期望的结构
+    target_structure = {
+        "analysis": {
+            "sentiment": "string (Positive/Negative/Neutral)",
+            "key_entities": ["string"],
+            "confidence_score": "float (0-1)"
+        },
+        "response_suggestion": "string"
+    }
+
+    # 3. 封装 Wrapper (将 model 和 structure 放在 init 传入)
+    wrapper = OpenAIJsonWrapper(
+        client, 
+        model=model_name,
+        target_structure=target_structure
+    )
+    
+    # 4. 模拟请求
+    messages = [
+        {"role": "user", "content": "GitHub Copilot 是一款非常棒的 AI 编程助手，它能极大地提高代码生产力，虽然偶尔会有小瑕疵，但整体瑕不掩瑜。"}
+    ]
+    
+    print("--- 正在发送请求到 LLM ---")
+    
+    # 现在 chat 方法不需要重复传 model 和 structure
+    result = wrapper.chat(messages=messages)
+    
+    print("\n--- 解析结果 ---")
+    if not result["error"]:
+        print("成功解析数据:")
+        print(json.dumps(result["data"], indent=2, ensure_ascii=False))
+        print("\n思维链/推理过程:")
+        print(result["reasoning"])
+    else:
+        print("解析失败!")
+        print(f"错误信息: {result['error']}")
+        print(f"原始响应内容:\n{result['raw_content']}")
+
+if __name__ == "__main__":
+    test_real_openai_wrapper()
