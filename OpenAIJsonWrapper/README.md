@@ -10,6 +10,12 @@
 pip install -e .
 ```
 
+或直接从本仓库的 GitHub Release 安装已构建的 wheel：
+
+```bash
+pip install "https://github.com/Liyulingyue/CreativeProjects/releases/download/OpenAIJsonWrapper/openai_json_wrapper-0.1.0-py3-none-any.whl"
+```
+
 ## 打包与分发
 
 如果您需要生成可分发的二进制包（.whl）：
