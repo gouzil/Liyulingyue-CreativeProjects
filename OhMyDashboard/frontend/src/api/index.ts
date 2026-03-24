@@ -1,6 +1,6 @@
 import { type SystemInfo, type DockerContainer, type StartupItem, type ProcessInfo } from '../types.ts';
 
-const API_BASE = '/api';
+const API_BASE = '';
 
 export const api = {
   async getSystemInfo(): Promise<SystemInfo> {
