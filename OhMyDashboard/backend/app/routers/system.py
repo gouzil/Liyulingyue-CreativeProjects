@@ -1,0 +1,35 @@
+from fastapi import APIRouter
+
+router = APIRouter(tags=["system"])
+
+@router.get("/info")
+async def get_system_info():
+    """获取基础系统 CPU、内存和磁盘信息"""
+    from ..services import SystemService
+    return SystemService.get_system_info()
+
+@router.get("/docker")
+async def get_docker_info():
+    """获取宿主机 Docker 容器状态"""
+    from ..services import SystemService
+    return SystemService.get_docker_containers()
+
+@router.get("/processes")
+async def get_process_list(limit: int = 50):
+    """获取当前活跃进程列表"""
+    from ..services import SystemService
+    return SystemService.get_running_processes(limit=limit)
+
+@router.get("/startup")
+async def get_startup_stats():
+    """获取负载和开机/运行相关的状态统计"""
+    from ..services import SystemService
+    return SystemService.get_startup_info()
+
+@router.post("/docker/{container_id}/{action}")
+async def container_action(container_id: str, action: str):
+    """控制容器启动、停止、重启"""
+    from ..services import SystemService
+    if action not in ["start", "stop", "restart"]:
+        return {"status": "error", "message": "Invalid action"}
+    return SystemService.manage_docker_container(container_id, action)

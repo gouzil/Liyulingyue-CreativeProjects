@@ -9,10 +9,22 @@ export default defineConfig({
     react()
   ],
   server: {
+    host: '0.0.0.0',
     proxy: {
       '/api': {
         target: 'http://localhost:8000',
         changeOrigin: true,
+        rewrite: (path) => path.replace(/^\/api/, '/api/v1')
+      },
+      '/system': {
+        target: 'http://localhost:8000',
+        changeOrigin: true,
+        rewrite: (path) => `/api/v1${path}`
+      },
+      '/status': {
+        target: 'http://localhost:8000',
+        changeOrigin: true,
+        rewrite: (path) => `/api/v1${path}`
       }
     }
   }
