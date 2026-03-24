@@ -38,6 +38,7 @@ def run(
     show_dist_freq: int = 100,
     chunk_size: int = 1500,
     model_name: Optional[str] = None,
+    template_idx: int = 1,
 ):
     """QAGeneration 主流程入口。"""
     setup_file_logging(log_path)
@@ -50,9 +51,25 @@ def run(
         return
 
     client = OpenAI(api_key=api_key, base_url=base_url)
-    # ... 其余逻辑将替换 print 为 logger.info ...
+
+    # 模板配置
+    templates = {
+        0: [{"Q": "问题描述", "A": "最终给出的答案"}],
+        1: [{
+            "Q": "问题描述",
+            "Thought": "在正式回答前的逻辑拆解与推理过程",
+            "A": "最终给出的答案"
+        }],
+        2: [{
+            "Q": "场景化问题描述",
+            "Context": "相关原文",
+            "A": "基于背景的深度解答"
+        }]
+    }
+    target_structure = templates.get(template_idx, templates[0])
 
     # 1. 核心逻辑组件初始化
+    # ... 其余逻辑 ...
     planner = DistributionPlanner(
         q_range=q_range,
         a_range=a_range,
@@ -61,8 +78,13 @@ def run(
         a_bins=a_bins,
         joint=joint,
     )
-    # 初始化 QAGenerator 时传入 output_path，开启追加写入模式
-    generator = QAGenerator(client, model=model, output_path=out_path)
+    # 初始化 QAGenerator 时传入 output_path 和 target_structure
+    generator = QAGenerator(
+        client, 
+        model=model, 
+        output_path=out_path,
+        target_structure=target_structure
+    )
 
     try:
         # 使用生成器流式加载
@@ -149,6 +171,12 @@ def main():
     )
     parser.add_argument("--chunk-size", type=int, default=1500, help="max characters per chunk for text splitting")
     parser.add_argument("--model", type=str, default=None, help="model name override")
+    parser.add_argument(
+        "--template-idx", 
+        type=int, 
+        default=2, 
+        help="Target structure template index (0: Q/A, 1: Q/Thought/A, 2: Q/Context/A). Default: 1"
+    )
 
     args = parser.parse_args()
 
@@ -167,6 +195,7 @@ def main():
         show_dist_freq=args.show_dist_freq,
         chunk_size=args.chunk_size,
         model_name=args.model,
+        template_idx=args.template_idx,
     )
 
 
