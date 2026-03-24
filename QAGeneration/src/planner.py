@@ -124,8 +124,20 @@ class DistributionPlanner:
         a_center = int(alow + (aj + 0.5) * a_step)
         return (q_center, a_center)
 
+    def _get_level_desc(self, length: int, is_q: bool = False) -> str:
+        """根据长度返回语义化的等级描述"""
+        if length <= 80:
+            typ = "概念定义/单一事实" if not is_q else "简短提问"
+            return f"[短篇/简练型] (建议目标: {typ}，约{length}字，1-2句)"
+        elif length <= 200:
+            typ = "原理解析/多点说明" if not is_q else "深度引导提问"
+            return f"[中篇/精炼型] (建议目标: {typ}，约{length}字，4-6句)"
+        else:
+            typ = "综合综述/长篇总结" if not is_q else "全局性综述提问"
+            return f"[长篇/详尽型] (建议目标: {typ}，至少{length}字，必须分段并包含背景/推导)"
+
     def get_adjustment_requirements(self) -> List[str]:
-        """给出补齐建议 (现在使用轮盘赌采样)"""
+        """给出补齐建议"""
         advice = []
         if self.total_count > 0:
             # joint 优先
@@ -133,15 +145,18 @@ class DistributionPlanner:
                 joint_sugg = self._get_underserved_joint()
                 if joint_sugg:
                     q_target, a_target = joint_sugg
-                    advice.append(f"【分布规划(轮盘采样)】为了平衡分布，建议下一组构造：Q 约 {q_target} 字，A 约 {a_target} 字。")
+                    q_desc = self._get_level_desc(q_target, is_q=True)
+                    a_desc = self._get_level_desc(a_target, is_q=False)
+                    advice.append(f"【分布规划】为了平衡数据分布，请严格按照以下【任务类型】构造本组 QA：\n- 问题(Q)风格: {q_desc}\n- 答案(A)风格: {a_desc}")
                     return advice
+            
             suggested_q = self._get_underserved_range(self.q_range)
             suggested_a = self._get_underserved_range(self.a_range)
             
             if suggested_q:
-                advice.append(f"【分布规划】当前问题(Q)长度分布不均，请尝试构造一个长度约 {int(suggested_q)} 字的问题。")
+                advice.append(f"【分布规则：Q】请尝试构造一个 {self._get_level_desc(int(suggested_q), is_q=True)}")
             if suggested_a:
-                advice.append(f"【分布规划】当前答案(A)长度分布不均，请尝试构造一个长度约 {int(suggested_a)} 字的详细回答。")
+                advice.append(f"【分布规则：A】请尝试构造一个 {self._get_level_desc(int(suggested_a), is_q=False)}")
         return advice
 
     def get_stats(self) -> Dict[str, Any]:

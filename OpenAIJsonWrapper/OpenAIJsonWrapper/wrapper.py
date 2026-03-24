@@ -58,6 +58,11 @@ class OpenAIJsonWrapper:
         )
         return prompt
 
+    def _to_list(self, x: Optional[Union[str, List[str]]]) -> List[str]:
+        if x is None:
+            return []
+        return x if isinstance(x, list) else [x]
+
     def _parse_content(self, text: str) -> Tuple[str, Any, Optional[str]]:
         """
         解析模型文本中内嵌的 JSON 块。
@@ -116,6 +121,7 @@ class OpenAIJsonWrapper:
         messages: List[Dict[str, str]], 
         target_structure: Optional[Any] = None, 
         requirements: Optional[Union[str, List[str]]] = None,
+        extra_requirements: Optional[Union[str, List[str]]] = None,
         background: Optional[str] = None,
         model: Optional[str] = None,
         **kwargs
@@ -126,6 +132,7 @@ class OpenAIJsonWrapper:
         :param messages: 对话上下文
         :param target_structure: 希望获取的 JSON 模板/定义（若为 None 则使用实例初始化时的值）
         :param requirements: 特定需求说明 (str 或 list)
+        :param extra_requirements: 额外补充需求 (str 或 list)，会与 requirements 合并
         :param background: 背景背景知识/上下文 (str)
         :param model: 模型名称（若为 None 则使用实例初始化时的值）
         :return: 包含 'reasoning', 'data', 'raw', 'error' 的字典
@@ -133,6 +140,10 @@ class OpenAIJsonWrapper:
         # 优先级：方法参数 > 初始化参数
         target = target_structure if target_structure is not None else self.target_structure
         reqs = requirements if requirements is not None else self.requirements
+        
+        # 将基础需求与当前调用的额外需求合并
+        combined_list = self._to_list(reqs) + self._to_list(extra_requirements)
+        reqs_for_prompt = combined_list if combined_list else None
         bg = background if background is not None else self.background
         selected_model = model if model is not None else self.model
 
@@ -140,7 +151,7 @@ class OpenAIJsonWrapper:
             raise ValueError("target_structure must be provided either in __init__ or in chat()")
 
         # 复制消息列表并注入系统提示
-        prompt = self._build_system_prompt(target, requirements=reqs, background=bg)
+        prompt = self._build_system_prompt(target, requirements=reqs_for_prompt, background=bg)
         
         new_messages = []
         has_system = False
