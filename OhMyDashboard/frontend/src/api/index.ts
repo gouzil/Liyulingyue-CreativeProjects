@@ -32,5 +32,9 @@ export const api = {
       method: 'POST',
     });
     return res.json();
+  },
+  async getServiceLogs(name: string, lines: number = 100): Promise<{ name: string; logs: string[]; error?: string }> {
+    const res = await fetch(`${API_BASE}/system/startup/${encodeURIComponent(name)}/logs?lines=${lines}`);
+    return res.json();
   }
 };

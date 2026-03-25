@@ -45,3 +45,9 @@ async def container_action(container_id: str, action: str):
     if action not in ["start", "stop", "restart"]:
         return {"status": "error", "message": "Invalid action"}
     return SystemService.manage_docker_container(container_id, action)
+
+@router.get("/startup/{name}/logs")
+async def get_service_logs(name: str, lines: int = 100):
+    """获取指定 systemd 服务的日志"""
+    from ..services import SystemService
+    return SystemService.get_service_logs(name, lines)
