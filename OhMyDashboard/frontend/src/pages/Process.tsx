@@ -3,7 +3,7 @@ import { api } from '../api'
 import type { ProcessInfo } from '../types'
 import { Activity, RefreshCw, Search, X, Terminal, SortAsc, SortDesc } from 'lucide-react'
 
-type SortKey = 'cpu_percent' | 'memory_percent' | 'pid' | 'name' | 'username'
+type SortKey = 'cpu_percent' | 'memory_percent' | 'pid' | 'name' | 'username' | 'status'
 type SortDir = 'asc' | 'desc'
 
 export const Process = () => {
@@ -12,6 +12,7 @@ export const Process = () => {
   const [search, setSearch] = useState('')
   const [sortKey, setSortKey] = useState<SortKey>('cpu_percent')
   const [sortDir, setSortDir] = useState<SortDir>('desc')
+  const [statusFilter, setStatusFilter] = useState<string>('all')
   const [killTarget, setKillTarget] = useState<ProcessInfo | null>(null)
 
   const fetchProcesses = async () => {
@@ -44,6 +45,9 @@ export const Process = () => {
         (p.username || '').toLowerCase().includes(s)
       )
     })
+    if (statusFilter !== 'all') {
+      list = list.filter(p => p.status === statusFilter)
+    }
     list.sort((a, b) => {
       const va = a[sortKey] ?? 0
       const vb = b[sortKey] ?? 0
@@ -51,7 +55,7 @@ export const Process = () => {
       return sortDir === 'asc' ? cmp : -cmp
     })
     return list
-  }, [processes, search, sortKey, sortDir])
+  }, [processes, search, sortKey, sortDir, statusFilter])
 
   const handleKill = async () => {
     if (!killTarget) return
@@ -85,6 +89,17 @@ export const Process = () => {
             onChange={e => setSearch(e.target.value)}
             className="px-3 py-1.5 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 w-48"
           />
+          <select
+            value={statusFilter}
+            onChange={e => setStatusFilter(e.target.value)}
+            className="px-2 py-1.5 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
+          >
+            <option value="all">全部状态</option>
+            <option value="running">running</option>
+            <option value="sleeping">sleeping</option>
+            <option value="stopped">stopped</option>
+            <option value="zombie">zombie</option>
+          </select>
           <button onClick={fetchProcesses} className="p-2 hover:bg-slate-100 rounded-lg text-slate-400 hover:text-slate-600" title="刷新">
             <RefreshCw size={16} />
           </button>
@@ -126,12 +141,12 @@ export const Process = () => {
                   </button>
                 </th>
                 <th className="py-3 w-16 text-center">线程</th>
-                <th className="py-3 w-20">状态</th>
-                <th className="py-3 w-16 text-center">
-                  <button onClick={() => setKillTarget(null)} className="hover:text-red-500" title="结束进程">
-                    <X size={14} />
+                <th className="py-3 w-20">
+                  <button onClick={() => handleSort('status')} className="flex items-center gap-1 hover:text-slate-600">
+                    状态 <SortIcon k="status" />
                   </button>
                 </th>
+                <th className="py-3 w-16 text-center">操作</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-50">

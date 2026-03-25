@@ -112,61 +112,45 @@ class SystemService:
     def get_startup_items():
         """
         获取 Linux 开机启动项 (基于 systemd)
-        优化：批量查询服务详情，避免逐个调用 systemctl show
         """
         try:
             import subprocess
-            BATCH_SIZE = 50
             PROPERTY = 'Description,ActiveState,SubState,LoadState,MainPID,MemoryCurrent,CPU'
 
             res = subprocess.run(
                 ['systemctl', 'list-unit-files', '--type=service', '--no-pager', '--no-legend'],
                 capture_output=True, text=True
             )
-            service_map = {}
+            items = []
             for line in res.stdout.splitlines():
                 parts = line.split(None, 2)
                 if len(parts) >= 2 and '.service' in parts[0]:
-                    service_map[parts[0]] = (parts[1], parts[2] if len(parts) > 2 else '')
+                    name = parts[0]
+                    status = parts[1]
+                    vendor_preset = parts[2] if len(parts) > 2 else ''
 
-            names = list(service_map.keys())
-            all_info = {}
+                    show_res = subprocess.run(
+                        ['systemctl', 'show', name, f'--property={PROPERTY}', '--no-pager'],
+                        capture_output=True, text=True
+                    )
+                    info = {}
+                    for line in show_res.stdout.splitlines():
+                        if '=' in line:
+                            k, v = line.split('=', 1)
+                            info[k] = v if v else '-'
 
-            for i in range(0, len(names), BATCH_SIZE):
-                batch = names[i:i + BATCH_SIZE]
-                show_res = subprocess.run(
-                    ['systemctl', 'show'] + batch + [f'--property={PROPERTY}', '--no-pager'],
-                    capture_output=True, text=True
-                )
-                current_name = ''
-                current = {}
-                for line in show_res.stdout.splitlines():
-                    if line.startswith('# Name='):
-                        if current_name:
-                            all_info[current_name] = current
-                        current_name = line.split('=', 1)[1].strip()
-                        current = {}
-                    elif '=' in line:
-                        k, v = line.split('=', 1)
-                        current[k] = v if v else '-'
-                if current_name:
-                    all_info[current_name] = current
-
-            items = []
-            for name, (state, vendor_preset) in service_map.items():
-                info = all_info.get(name, {})
-                items.append({
-                    "name": name,
-                    "status": state,
-                    "vendor_preset": vendor_preset,
-                    "description": info.get('Description', ''),
-                    "active_state": info.get('ActiveState', ''),
-                    "sub_state": info.get('SubState', ''),
-                    "load_state": info.get('LoadState', ''),
-                    "main_pid": info.get('MainPID', '-'),
-                    "memory_current": info.get('MemoryCurrent', '-'),
-                    "cpu": info.get('CPU', '-'),
-                })
+                    items.append({
+                        "name": name,
+                        "status": status,
+                        "vendor_preset": vendor_preset,
+                        "description": info.get('Description', ''),
+                        "active_state": info.get('ActiveState', ''),
+                        "sub_state": info.get('SubState', ''),
+                        "load_state": info.get('LoadState', ''),
+                        "main_pid": info.get('MainPID', '-'),
+                        "memory_current": info.get('MemoryCurrent', '-'),
+                        "cpu": info.get('CPU', '-'),
+                    })
             return items
         except Exception as e:
             return {"error": str(e)}
@@ -178,6 +162,22 @@ class SystemService:
             "startup_items": SystemService.get_startup_items(),
             "users": [u._asdict() for u in psutil.users()]
         }
+
+    @staticmethod
+    def get_service_logs(name: str, lines: int = 100):
+        """
+        获取指定 systemd 服务的 journal 日志
+        """
+        try:
+            import subprocess
+            res = subprocess.run(
+                ['journalctl', '-u', name, '-n', str(lines), '--no-pager', '--reverse'],
+                capture_output=True, text=True
+            )
+            log_lines = res.stdout.splitlines() if res.stdout else res.stderr.splitlines()
+            return {"name": name, "logs": log_lines}
+        except Exception as e:
+            return {"name": name, "logs": [], "error": str(e)}
 
     @staticmethod
     def get_network_info():

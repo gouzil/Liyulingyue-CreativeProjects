@@ -1,10 +1,11 @@
 import { useEffect, useState } from 'react'
 import { api } from '../api'
 import type { StartupItem } from '../types'
-import { Power, RefreshCw, ListChecks, ToggleLeft, ToggleRight, LayoutGrid, List, Search, X, Info } from 'lucide-react'
+import { Power, RefreshCw, ListChecks, ToggleLeft, ToggleRight, LayoutGrid, List, Search, X, Info, FileText } from 'lucide-react'
 
 type ViewMode = 'card' | 'list'
 type FilterMode = 'all' | 'enabled' | 'disabled'
+type DetailTab = 'info' | 'logs'
 
 export const Startup = () => {
   const [items, setItems] = useState<StartupItem[]>([])
@@ -13,6 +14,9 @@ export const Startup = () => {
   const [filterMode, setFilterMode] = useState<FilterMode>('all')
   const [search, setSearch] = useState('')
   const [selectedItem, setSelectedItem] = useState<StartupItem | null>(null)
+  const [detailTab, setDetailTab] = useState<DetailTab>('info')
+  const [logs, setLogs] = useState<string[]>([])
+  const [logsLoading, setLogsLoading] = useState(false)
 
   const fetchStartup = async () => {
     setIsLoading(true)
@@ -25,13 +29,29 @@ export const Startup = () => {
     fetchStartup()
   }, [])
 
+  useEffect(() => {
+    if (!selectedItem) return
+    if (detailTab !== 'logs') return
+    setLogsLoading(true)
+    api.getServiceLogs(selectedItem.name).then(data => {
+      setLogs(data.logs || [])
+      setLogsLoading(false)
+    })
+  }, [selectedItem, detailTab])
+
+  const handleClose = () => {
+    setSelectedItem(null)
+    setDetailTab('info')
+    setLogs([])
+  }
+
   const filtered = items.filter(item => {
     const name = item.name.toLowerCase()
     const desc = (item.description || '').toLowerCase()
     const keyword = search.toLowerCase()
     if (keyword && !name.includes(keyword) && !desc.includes(keyword)) return false
     if (filterMode === 'enabled' && item.status !== 'enabled') return false
-    if (filterMode === 'disabled' && item.status === 'disabled') return false
+    if (filterMode === 'disabled' && item.status !== 'disabled') return false
     return true
   })
 
@@ -180,7 +200,7 @@ export const Startup = () => {
               </p>
               <div className="flex items-center justify-between text-xs text-slate-400 mt-auto pt-3 border-t border-slate-50">
                 <span>激活: <span className={item.active_state === 'active' ? 'text-emerald-500' : ''}>{item.active_state || '-'}</span></span>
-                <button onClick={() => setSelectedItem(selectedItem?.name === item.name ? null : item)} className="text-blue-500 hover:text-blue-600">详情</button>
+                <button onClick={() => { setSelectedItem(item); setDetailTab('info'); setLogs([]); }} className="text-blue-500 hover:text-blue-600">详情</button>
               </div>
             </div>
           ))}
@@ -188,8 +208,8 @@ export const Startup = () => {
       )}
 
       {selectedItem && (
-        <div className="fixed inset-0 bg-black/30 flex items-center justify-center z-50" onClick={() => setSelectedItem(null)}>
-          <div className="bg-white rounded-xl shadow-xl max-w-lg w-full mx-4 overflow-hidden" onClick={e => e.stopPropagation()}>
+        <div className="fixed inset-0 bg-black/30 flex items-center justify-center z-50" onClick={handleClose}>
+          <div className="bg-white rounded-xl shadow-xl max-w-2xl w-full mx-4 overflow-hidden max-h-[80vh] flex flex-col" onClick={e => e.stopPropagation()}>
             <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100">
               <div className="flex items-center gap-3">
                 <div className="w-10 h-10 rounded-lg bg-emerald-50 flex items-center justify-center text-emerald-500">
@@ -200,25 +220,59 @@ export const Startup = () => {
                   <p className="text-xs text-slate-400">{selectedItem.description || '无描述'}</p>
                 </div>
               </div>
-              <button onClick={() => setSelectedItem(null)} className="p-2 hover:bg-slate-100 rounded-lg">
+              <button onClick={handleClose} className="p-2 hover:bg-slate-100 rounded-lg">
                 <X size={16} className="text-slate-400" />
               </button>
             </div>
-            <div className="p-6 space-y-3">
-              {[
-                ['自启动状态', selectedItem.status, selectedItem.status === 'enabled' ? 'text-emerald-600' : 'text-slate-400'],
-                ['Vendor 预设', selectedItem.vendor_preset || '-', 'text-slate-500'],
-                ['激活状态', selectedItem.active_state || '-', selectedItem.active_state === 'active' ? 'text-emerald-600' : 'text-slate-400'],
-                ['运行状态', selectedItem.sub_state || '-', 'text-slate-500'],
-                ['加载状态', selectedItem.load_state || '-', 'text-slate-500'],
-                ['主进程 PID', selectedItem.main_pid || '-', 'text-slate-500'],
-                ['内存占用', selectedItem.memory_current || '-', 'text-slate-500'],
-              ].map(([label, value, cls]) => (
-                <div key={label as string} className="flex items-center justify-between text-sm">
-                  <span className="text-slate-400">{label as string}</span>
-                  <span className={`font-medium ${cls as string}`}>{value as string}</span>
+            <div className="flex border-b border-slate-100">
+              <button
+                onClick={() => setDetailTab('info')}
+                className={`flex items-center gap-2 px-6 py-3 text-sm font-medium transition-colors ${
+                  detailTab === 'info' ? 'text-emerald-600 border-b-2 border-emerald-600' : 'text-slate-400 hover:text-slate-600'
+                }`}
+              >
+                <Info size={14} /> 详情
+              </button>
+              <button
+                onClick={() => setDetailTab('logs')}
+                className={`flex items-center gap-2 px-6 py-3 text-sm font-medium transition-colors ${
+                  detailTab === 'logs' ? 'text-emerald-600 border-b-2 border-emerald-600' : 'text-slate-400 hover:text-slate-600'
+                }`}
+              >
+                <FileText size={14} /> 日志
+              </button>
+            </div>
+            <div className="flex-1 overflow-auto">
+              {detailTab === 'info' ? (
+                <div className="p-6 space-y-3">
+                  {[
+                    ['自启动状态', selectedItem.status, selectedItem.status === 'enabled' ? 'text-emerald-600' : 'text-slate-400'],
+                    ['Vendor 预设', selectedItem.vendor_preset || '-', 'text-slate-500'],
+                    ['激活状态', selectedItem.active_state || '-', selectedItem.active_state === 'active' ? 'text-emerald-600' : 'text-slate-400'],
+                    ['运行状态', selectedItem.sub_state || '-', 'text-slate-500'],
+                    ['加载状态', selectedItem.load_state || '-', 'text-slate-500'],
+                    ['主进程 PID', selectedItem.main_pid || '-', 'text-slate-500'],
+                    ['内存占用', selectedItem.memory_current || '-', 'text-slate-500'],
+                  ].map(([label, value, cls]) => (
+                    <div key={label as string} className="flex items-center justify-between text-sm">
+                      <span className="text-slate-400">{label as string}</span>
+                      <span className={`font-medium ${cls as string}`}>{value as string}</span>
+                    </div>
+                  ))}
                 </div>
-              ))}
+              ) : (
+                <div className="p-4">
+                  {logsLoading ? (
+                    <div className="py-8 text-center text-slate-400">加载日志中...</div>
+                  ) : logs.length === 0 ? (
+                    <div className="py-8 text-center text-slate-400">暂无日志</div>
+                  ) : (
+                    <pre className="text-xs font-mono text-slate-600 bg-slate-50 rounded-lg p-4 overflow-auto max-h-[400px] whitespace-pre-wrap break-all">
+                      {logs.join('\n')}
+                    </pre>
+                  )}
+                </div>
+              )}
             </div>
           </div>
         </div>
