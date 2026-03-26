@@ -1,13 +1,17 @@
 import { useState, useEffect } from 'react'
 import { api } from '../api'
 import type { DockerContainer } from '../types'
-import { Box, Play, Square, RotateCcw, AlertTriangle, Layers, RefreshCw, LayoutGrid, List, Search, Terminal, Lock, X } from 'lucide-react'
+import { Box, Play, Square, RotateCcw, AlertTriangle, Layers, RefreshCw, LayoutGrid, List, Search, Lock, HardDrive } from 'lucide-react'
+import type { DockerImage } from '../types'
 
 type ViewMode = 'card' | 'list'
 type FilterMode = 'all' | 'running' | 'stopped'
+type Tab = 'containers' | 'images'
 
 export const Docker = () => {
   const [containers, setContainers] = useState<DockerContainer[]>([])
+  const [images, setImages] = useState<DockerImage[]>([])
+  const [tab, setTab] = useState<Tab>('containers')
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [needAuth, setNeedAuth] = useState(false)
@@ -17,15 +21,30 @@ export const Docker = () => {
   const [filter, setFilter] = useState<FilterMode>('all')
   const [viewMode, setViewMode] = useState<ViewMode>('list')
   const [search, setSearch] = useState('')
+  const [imageSearch, setImageSearch] = useState('')
 
   const fetchDocker = async () => {
     setIsLoading(true)
     setError(null)
-    const data = await api.getDockerInfo()
-    if (Array.isArray(data)) {
-      setContainers(data)
-    } else if (data && typeof data === 'object' && 'error' in data) {
-      const d = data as { error: string; need_auth?: boolean }
+    const [containersData, imagesData] = await Promise.all([
+      api.getDockerInfo(),
+      api.getDockerImages(),
+    ])
+    if (Array.isArray(containersData)) {
+      setContainers(containersData)
+    } else if (containersData && typeof containersData === 'object' && 'error' in containersData) {
+      const d = containersData as { error: string; need_auth?: boolean }
+      if (d.need_auth) {
+        setNeedAuth(true)
+        setIsLoading(false)
+        return
+      }
+      setError(d.error)
+    }
+    if (Array.isArray(imagesData)) {
+      setImages(imagesData)
+    } else if (imagesData && typeof imagesData === 'object' && 'error' in imagesData) {
+      const d = imagesData as { error: string; need_auth?: boolean }
       if (d.need_auth) {
         setNeedAuth(true)
         setIsLoading(false)
@@ -86,12 +105,38 @@ export const Docker = () => {
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
           <Layers size={20} className="text-blue-600" />
-          <h2 className="text-lg font-bold text-slate-800">Docker 容器管理</h2>
-          <span className="text-xs text-slate-400 ml-1">
-            {containers.filter(c => c.status === 'running').length}/{containers.length} 运行中
-          </span>
+          <h2 className="text-lg font-bold text-slate-800">Docker 管理</h2>
+          {tab === 'containers' && (
+            <span className="text-xs text-slate-400 ml-1">
+              {containers.filter(c => c.status === 'running').length}/{containers.length} 运行中
+            </span>
+          )}
+          {tab === 'images' && (
+            <span className="text-xs text-slate-400 ml-1">
+              {images.length} 个镜像
+            </span>
+          )}
         </div>
         <div className="flex items-center gap-3">
+          <div className="flex gap-1 bg-slate-100 rounded-lg p-1">
+            <button
+              onClick={() => setTab('containers')}
+              className={`px-3 py-1 text-xs font-medium rounded-md transition-colors ${
+                tab === 'containers' ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-500 hover:text-slate-700'
+              }`}
+            >
+              容器
+            </button>
+            <button
+              onClick={() => setTab('images')}
+              className={`px-3 py-1 text-xs font-medium rounded-md transition-colors ${
+                tab === 'images' ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-500 hover:text-slate-700'
+              }`}
+            >
+              镜像
+            </button>
+          </div>
+          {tab === 'containers' && (
           <div className="relative">
             <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
             <input
@@ -102,6 +147,21 @@ export const Docker = () => {
               className="pl-8 pr-3 py-1.5 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent w-40"
             />
           </div>
+          )}
+          {tab === 'images' && (
+          <div className="relative">
+            <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+            <input
+              type="text"
+              placeholder="搜索镜像..."
+              value={imageSearch}
+              onChange={e => setImageSearch(e.target.value)}
+              className="pl-8 pr-3 py-1.5 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent w-40"
+            />
+          </div>
+          )}
+          {tab === 'containers' && (
+          <>
           <div className="flex gap-1 bg-slate-100 rounded-lg p-1">
             {(['all', 'running', 'stopped'] as const).map(f => (
               <button
@@ -131,6 +191,8 @@ export const Docker = () => {
               <LayoutGrid size={14} />
             </button>
           </div>
+          </>
+          )}
           <button
             onClick={fetchDocker}
             className="p-2 hover:bg-slate-100 rounded-lg transition-colors"
@@ -177,110 +239,164 @@ export const Docker = () => {
           <span>{error}</span>
           <button onClick={fetchDocker} className="text-sm text-blue-500 hover:underline">重试</button>
         </div>
-      ) : filtered.length === 0 ? (
-        <div className="py-12 text-center text-slate-400 flex flex-col items-center gap-2">
-          <AlertTriangle size={24} className="text-slate-200" />
-          <span>未找到匹配的容器</span>
-        </div>
-      ) : viewMode === 'list' ? (
+      ) : tab === 'containers' ? (
+        filtered.length === 0 ? (
+          <div className="py-12 text-center text-slate-400 flex flex-col items-center gap-2">
+            <AlertTriangle size={24} className="text-slate-200" />
+            <span>未找到匹配的容器</span>
+          </div>
+        ) : viewMode === 'list' ? (
+          <div className="bg-white rounded-xl shadow-sm border border-slate-100 overflow-hidden">
+            <table className="min-w-full">
+              <thead>
+                <tr className="border-b border-slate-50 text-slate-400 text-xs uppercase tracking-wider font-semibold">
+                  <th className="pb-3 text-left pl-4">容器</th>
+                  <th className="pb-3 text-left">镜像</th>
+                  <th className="pb-3 text-left">状态</th>
+                  <th className="pb-3 text-left">端口</th>
+                  <th className="pb-3 text-right pr-4">操作</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-50">
+                {filtered.map(c => (
+                  <tr key={c.id} className="hover:bg-slate-50/50 transition-colors">
+                    <td className="py-3 pl-4">
+                      <div className="flex items-center gap-2">
+                        <div className="w-8 h-8 rounded-lg bg-blue-50 flex items-center justify-center text-blue-500">
+                          <Box size={14} />
+                        </div>
+                        <div>
+                          <span className="text-sm font-semibold text-slate-700 block">{c.name}</span>
+                          <span className="text-xs text-slate-400 font-mono">{c.id}</span>
+                        </div>
+                      </div>
+                    </td>
+                    <td className="py-3">
+                      <span className="text-sm text-slate-500 font-mono text-xs">{c.image}</span>
+                    </td>
+                    <td className="py-3">{getStatusBadge(c.status)}</td>
+                    <td className="py-3">
+                      <span className="text-xs text-slate-400 font-mono">
+                        {typeof c.ports === 'string' && c.ports ? c.ports : '-'}
+                      </span>
+                    </td>
+                    <td className="py-3 pr-4">
+                      <div className="flex justify-end gap-1.5">
+                        {c.status === 'running' ? (
+                          <button onClick={() => handleAction(c.id, 'stop')} className="p-1.5 hover:bg-red-100 text-red-400 rounded-lg transition-colors" title="停止">
+                            <Square size={14} fill="currentColor" />
+                          </button>
+                        ) : (
+                          <button onClick={() => handleAction(c.id, 'start')} className="p-1.5 hover:bg-green-100 text-green-400 rounded-lg transition-colors" title="启动">
+                            <Play size={14} fill="currentColor" />
+                          </button>
+                        )}
+                        <button onClick={() => handleAction(c.id, 'restart')} className="p-1.5 hover:bg-blue-100 text-blue-400 rounded-lg transition-colors" title="重启">
+                          <RotateCcw size={14} />
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+            <div className="px-4 py-3 border-t border-slate-50 text-xs text-slate-400 text-center">
+              共 {filtered.length} 个容器
+            </div>
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+            {filtered.map(c => (
+              <div key={c.id} className="flex flex-col p-4 rounded-xl border border-slate-100 hover:bg-slate-50 transition-all bg-white">
+                <div className="flex items-center justify-between mb-3">
+                  <div className="flex items-center gap-2">
+                    <div className="w-10 h-10 rounded-lg bg-blue-50 flex items-center justify-center text-blue-500">
+                      <Box size={18} />
+                    </div>
+                    <div>
+                      <span className="text-sm font-bold text-slate-700 block">{c.name}</span>
+                      <span className="text-xs text-slate-400 font-mono">{c.id}</span>
+                    </div>
+                  </div>
+                  {getStatusBadge(c.status)}
+                </div>
+                <p className="text-xs text-slate-500 mb-3 font-mono truncate" title={c.image}>
+                  {c.image}
+                </p>
+                <div className="mt-auto pt-3 border-t border-slate-50">
+                  <div className="flex items-center justify-between text-xs text-slate-400 mb-3">
+                    <span>端口: {typeof c.ports === 'string' && c.ports ? c.ports : '-'}</span>
+                  </div>
+                  <div className="flex gap-1.5">
+                    {c.status === 'running' ? (
+                      <button onClick={() => handleAction(c.id, 'stop')} className="flex-1 py-1.5 hover:bg-red-50 text-red-400 rounded-lg transition-colors text-xs font-medium" title="停止">
+                        停止
+                      </button>
+                    ) : (
+                      <button onClick={() => handleAction(c.id, 'start')} className="flex-1 py-1.5 hover:bg-green-50 text-green-400 rounded-lg transition-colors text-xs font-medium" title="启动">
+                        启动
+                      </button>
+                    )}
+                    <button onClick={() => handleAction(c.id, 'restart')} className="flex-1 py-1.5 hover:bg-blue-50 text-blue-400 rounded-lg transition-colors text-xs font-medium" title="重启">
+                      重启
+                    </button>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        )
+      ) : (
         <div className="bg-white rounded-xl shadow-sm border border-slate-100 overflow-hidden">
           <table className="min-w-full">
             <thead>
               <tr className="border-b border-slate-50 text-slate-400 text-xs uppercase tracking-wider font-semibold">
-                <th className="pb-3 text-left pl-4">容器</th>
-                <th className="pb-3 text-left">镜像</th>
-                <th className="pb-3 text-left">状态</th>
-                <th className="pb-3 text-left">端口</th>
-                <th className="pb-3 text-right pr-4">操作</th>
+                <th className="pb-3 text-left pl-4">镜像</th>
+                <th className="pb-3 text-left">标签</th>
+                <th className="pb-3 text-left">ID</th>
+                <th className="pb-3 text-left">大小</th>
+                <th className="pb-3 text-left">创建时间</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-50">
-              {filtered.map(c => (
-                <tr key={c.id} className="hover:bg-slate-50/50 transition-colors">
-                  <td className="py-3 pl-4">
-                    <div className="flex items-center gap-2">
-                      <div className="w-8 h-8 rounded-lg bg-blue-50 flex items-center justify-center text-blue-500">
-                        <Box size={14} />
+              {images
+                .filter(img => {
+                  const kw = imageSearch.toLowerCase()
+                  return !kw || img.repository.toLowerCase().includes(kw) || img.tag.toLowerCase().includes(kw)
+                })
+                .map(img => (
+                  <tr key={img.id} className="hover:bg-slate-50/50 transition-colors">
+                    <td className="py-3 pl-4">
+                      <div className="flex items-center gap-2">
+                        <div className="w-8 h-8 rounded-lg bg-purple-50 flex items-center justify-center text-purple-500">
+                          <HardDrive size={14} />
+                        </div>
+                        <span className="text-sm font-semibold text-slate-700 font-mono">{img.repository}</span>
                       </div>
-                      <div>
-                        <span className="text-sm font-semibold text-slate-700 block">{c.name}</span>
-                        <span className="text-xs text-slate-400 font-mono">{c.id}</span>
-                      </div>
-                    </div>
-                  </td>
-                  <td className="py-3">
-                    <span className="text-sm text-slate-500 font-mono text-xs">{c.image}</span>
-                  </td>
-                  <td className="py-3">{getStatusBadge(c.status)}</td>
-                  <td className="py-3">
-                    <span className="text-xs text-slate-400 font-mono">
-                      {c.ports && Object.keys(c.ports).length > 0 ? Object.keys(c.ports).join(', ') : '-'}
-                    </span>
-                  </td>
-                  <td className="py-3 pr-4">
-                    <div className="flex justify-end gap-1.5">
-                      {c.status === 'running' ? (
-                        <button onClick={() => handleAction(c.id, 'stop')} className="p-1.5 hover:bg-red-100 text-red-400 rounded-lg transition-colors" title="停止">
-                          <Square size={14} fill="currentColor" />
-                        </button>
-                      ) : (
-                        <button onClick={() => handleAction(c.id, 'start')} className="p-1.5 hover:bg-green-100 text-green-400 rounded-lg transition-colors" title="启动">
-                          <Play size={14} fill="currentColor" />
-                        </button>
-                      )}
-                      <button onClick={() => handleAction(c.id, 'restart')} className="p-1.5 hover:bg-blue-100 text-blue-400 rounded-lg transition-colors" title="重启">
-                        <RotateCcw size={14} />
-                      </button>
-                    </div>
-                  </td>
-                </tr>
-              ))}
+                    </td>
+                    <td className="py-3">
+                      <span className={`text-xs px-2 py-0.5 rounded font-bold ${
+                        img.tag === 'latest' ? 'bg-emerald-50 text-emerald-600' : 'bg-slate-100 text-slate-500'
+                      }`}>
+                        {img.tag}
+                      </span>
+                    </td>
+                    <td className="py-3">
+                      <span className="text-xs text-slate-400 font-mono">{img.id.replace('sha256:', '').substring(0, 12)}</span>
+                    </td>
+                    <td className="py-3">
+                      <span className="text-xs text-slate-500">{img.size}</span>
+                    </td>
+                    <td className="py-3">
+                      <span className="text-xs text-slate-400">{img.created}</span>
+                    </td>
+                  </tr>
+                ))}
             </tbody>
           </table>
           <div className="px-4 py-3 border-t border-slate-50 text-xs text-slate-400 text-center">
-            共 {filtered.length} 个容器
+            共 {images.length} 个镜像
           </div>
-        </div>
-      ) : (
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-          {filtered.map(c => (
-            <div key={c.id} className="flex flex-col p-4 rounded-xl border border-slate-100 hover:bg-slate-50 transition-all bg-white">
-              <div className="flex items-center justify-between mb-3">
-                <div className="flex items-center gap-2">
-                  <div className="w-10 h-10 rounded-lg bg-blue-50 flex items-center justify-center text-blue-500">
-                    <Box size={18} />
-                  </div>
-                  <div>
-                    <span className="text-sm font-bold text-slate-700 block">{c.name}</span>
-                    <span className="text-xs text-slate-400 font-mono">{c.id}</span>
-                  </div>
-                </div>
-                {getStatusBadge(c.status)}
-              </div>
-              <p className="text-xs text-slate-500 mb-3 font-mono truncate" title={c.image}>
-                {c.image}
-              </p>
-              <div className="mt-auto pt-3 border-t border-slate-50">
-                <div className="flex items-center justify-between text-xs text-slate-400 mb-3">
-                  <span>端口: {c.ports && Object.keys(c.ports).length > 0 ? Object.keys(c.ports).slice(0, 2).join(', ') + (Object.keys(c.ports).length > 2 ? '...' : '') : '-'}</span>
-                </div>
-                <div className="flex gap-1.5">
-                  {c.status === 'running' ? (
-                    <button onClick={() => handleAction(c.id, 'stop')} className="flex-1 py-1.5 hover:bg-red-50 text-red-400 rounded-lg transition-colors text-xs font-medium" title="停止">
-                      停止
-                    </button>
-                  ) : (
-                    <button onClick={() => handleAction(c.id, 'start')} className="flex-1 py-1.5 hover:bg-green-50 text-green-400 rounded-lg transition-colors text-xs font-medium" title="启动">
-                      启动
-                    </button>
-                  )}
-                  <button onClick={() => handleAction(c.id, 'restart')} className="flex-1 py-1.5 hover:bg-blue-50 text-blue-400 rounded-lg transition-colors text-xs font-medium" title="重启">
-                    重启
-                  </button>
-                </div>
-              </div>
-            </div>
-          ))}
         </div>
       )}
     </div>

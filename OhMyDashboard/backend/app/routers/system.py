@@ -14,6 +14,12 @@ async def get_docker_info():
     from ..services import SystemService
     return SystemService.get_docker_containers()
 
+@router.get("/docker/images")
+async def get_docker_images():
+    """获取宿主机 Docker 镜像列表"""
+    from ..services import SystemService
+    return SystemService.get_docker_images()
+
 @router.get("/processes")
 async def get_process_list(limit: int = 50):
     """获取当前活跃进程列表"""
@@ -73,4 +79,28 @@ async def docker_logout():
     """清除认证状态"""
     from ..services import _docker_authenticated
     _docker_authenticated["password"] = None
+    return {"status": "ok"}
+
+@router.post("/power/{action}")
+async def system_power(action: str, body: dict):
+    """系统关机或重启"""
+    print(f"[ROUTER] /power/{action} called, body keys={list(body.keys())}")
+    password = body.get("password", "")
+    print(f"[ROUTER] password length: {len(password)}")
+    if action == "shutdown":
+        cmd = ["shutdown", "now"]
+    elif action == "restart":
+        cmd = ["shutdown", "-r", "now"]
+    else:
+        return {"status": "error", "message": f"Invalid action: {action}"}
+    import subprocess
+    print(f"[ROUTER] running: {cmd} with sudo -S")
+    res = subprocess.run(
+        ["sudo", "-S", "-k"] + cmd,
+        input=password + "\n", capture_output=True, text=True
+    )
+    print(f"[ROUTER] returncode={res.returncode}, stdout={res.stdout!r}, stderr={res.stderr!r}")
+    if res.returncode != 0:
+        err = res.stderr.strip() or res.stdout.strip() or "权限不足"
+        return {"status": "error", "message": err}
     return {"status": "ok"}

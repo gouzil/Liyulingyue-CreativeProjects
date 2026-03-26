@@ -5,6 +5,7 @@ import { Docker } from './pages/Docker'
 import { Startup } from './pages/Startup'
 import { Process } from './pages/Process'
 import { Network } from './pages/Network'
+import { Terminal } from './pages/Terminal'
 
 function App() {
   return (
@@ -19,6 +20,7 @@ function App() {
             <Route path="/startup" element={<Startup />} />
             <Route path="/process" element={<Process />} />
             <Route path="/network" element={<Network />} />
+            <Route path="/terminal" element={<Terminal />} />
           </Routes>
         </main>
 

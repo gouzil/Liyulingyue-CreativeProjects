@@ -1,10 +1,29 @@
 import React, { useEffect, useState } from 'react';
 import { api } from '../api';
 import type { SystemInfo } from '../types.ts';
-import { Cpu, Database, HardDrive, Activity } from 'lucide-react';
+import { Cpu, Database, HardDrive, Activity, RotateCcw, PowerOff } from 'lucide-react';
 
 export const SystemMonitor: React.FC = () => {
     const [info, setInfo] = useState<SystemInfo | null>(null);
+    const [powerAction, setPowerAction] = useState<'shutdown' | 'restart' | null>(null);
+    const [powerLoading, setPowerLoading] = useState(false);
+    const [password, setPassword] = useState('');
+    const [authError, setAuthError] = useState('');
+
+    const handlePower = async () => {
+        if (!powerAction) return
+        setPowerLoading(true)
+        setAuthError('')
+        const res = await api.systemPower(powerAction, password)
+        if (res.status !== 'ok') {
+            setAuthError(res.message || '操作失败')
+            setPowerLoading(false)
+            return
+        }
+        setPassword('')
+        setPowerLoading(false)
+        setPowerAction(null)
+    }
 
     useEffect(() => {
         const fetchInfo = async () => {
@@ -54,9 +73,27 @@ export const SystemMonitor: React.FC = () => {
 
     return (
         <div className="space-y-4">
-            <div className="flex items-center gap-2 px-1">
-                <Activity size={18} className="text-indigo-600" />
-                <h2 className="text-base font-bold text-slate-700 uppercase tracking-wider">实时资源监控</h2>
+            <div className="flex items-center justify-between px-1">
+                <div className="flex items-center gap-2">
+                    <Activity size={18} className="text-indigo-600" />
+                    <h2 className="text-base font-bold text-slate-700 uppercase tracking-wider">实时资源监控</h2>
+                </div>
+                <div className="flex items-center gap-1">
+                    <button
+                        onClick={() => setPowerAction('restart')}
+                        className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-slate-500 hover:text-orange-500 hover:bg-orange-50 rounded-lg transition-colors"
+                    >
+                        <RotateCcw size={13} />
+                        重启
+                    </button>
+                    <button
+                        onClick={() => setPowerAction('shutdown')}
+                        className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-slate-500 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors"
+                    >
+                        <PowerOff size={13} />
+                        关机
+                    </button>
+                </div>
             </div>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                 <StatCard 
@@ -84,6 +121,47 @@ export const SystemMonitor: React.FC = () => {
                     colorClass={{ bg: 'bg-amber-50', text: 'text-amber-600', bar: 'bg-amber-600' }}
                 />
             </div>
+
+            {powerAction && (
+                <div className="fixed inset-0 bg-black/30 flex items-center justify-center z-50">
+                    <div className="bg-white rounded-2xl p-6 w-80 shadow-xl">
+                        <h3 className="font-bold text-slate-800 text-center mb-1">
+                            确认{powerAction === 'shutdown' ? '关机' : '重启'}？
+                        </h3>
+                        <p className="text-sm text-slate-400 text-center mb-4">
+                            {powerAction === 'shutdown' ? '系统将立即关机，请保存好数据。' : '系统将立即重启。'}
+                        </p>
+                        <p className="text-xs text-slate-400 text-center mb-3">需要 sudo 权限，请输入当前用户密码</p>
+                        <input
+                            type="password"
+                            value={password}
+                            onChange={e => setPassword(e.target.value)}
+                            onKeyDown={e => e.key === 'Enter' && handlePower()}
+                            placeholder="输入 sudo 密码"
+                            className="w-full px-4 py-2.5 text-sm border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 mb-2"
+                            autoFocus
+                        />
+                        {authError && <p className="text-xs text-red-500 text-center mb-3">{authError}</p>}
+                        <div className="flex gap-3">
+                            <button
+                                onClick={() => { setPowerAction(null); setPassword(''); setAuthError('') }}
+                                className="flex-1 py-2.5 text-sm text-slate-600 bg-slate-100 hover:bg-slate-200 rounded-xl transition-colors"
+                            >
+                                取消
+                            </button>
+                            <button
+                                onClick={handlePower}
+                                disabled={powerLoading || !password}
+                                className={`flex-1 py-2.5 text-sm text-white rounded-xl transition-colors disabled:opacity-50 ${
+                                    powerAction === 'shutdown' ? 'bg-red-400 hover:bg-red-500' : 'bg-orange-400 hover:bg-orange-500'
+                                }`}
+                            >
+                                {powerLoading ? '处理中...' : '确认'}
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
         </div>
     );
 };
