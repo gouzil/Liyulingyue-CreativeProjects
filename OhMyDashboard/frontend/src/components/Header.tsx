@@ -1,6 +1,6 @@
 import { Link, useLocation } from 'react-router-dom'
 import heroImg from '../assets/hero.png'
-import { LayoutDashboard, Box, ListChecks, Activity, Globe } from 'lucide-react'
+import { LayoutDashboard, Box, ListChecks, Activity, Globe, Terminal } from 'lucide-react'
 
 const navItems = [
   { path: '/', label: '概览', icon: LayoutDashboard },
@@ -8,6 +8,7 @@ const navItems = [
   { path: '/startup', label: '自启项', icon: ListChecks },
   { path: '/process', label: '进程', icon: Activity },
   { path: '/network', label: '网络', icon: Globe },
+  { path: '/terminal', label: '终端', icon: Terminal },
 ]
 
 export const Header = () => {

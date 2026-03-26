@@ -2,11 +2,12 @@ import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { SystemMonitor } from '../components/SystemMonitor'
 import { api } from '../api'
-import { Box, Layers, Power, ArrowRight, Globe } from 'lucide-react'
+import { Box, Layers, Power, ArrowRight, Globe, Terminal } from 'lucide-react'
 
 export const Dashboard = () => {
   const [dockerCount, setDockerCount] = useState({ running: 0, total: 0 })
   const [startupCount, setStartupCount] = useState({ enabled: 0, total: 0 })
+  const [processCount, setProcessCount] = useState(0)
   const [netStats, setNetStats] = useState({ tcp: 0, udp: 0, total: 0 })
 
   useEffect(() => {
@@ -27,6 +28,9 @@ export const Dashboard = () => {
     })
     api.getNetworkInfo().then(data => {
       setNetStats(data.connections)
+    })
+    api.getProcesses().then(data => {
+      if (Array.isArray(data)) setProcessCount(data.length)
     })
   }, [])
 
@@ -67,8 +71,8 @@ export const Dashboard = () => {
           </div>
           <div>
             <p className="text-xs text-slate-400 mb-1">进程管理</p>
-            <p className="text-lg font-bold text-slate-800">管理</p>
-            <p className="text-xs text-slate-400">查看 / 结束进程</p>
+            <p className="text-xl font-bold text-slate-800">{processCount}</p>
+            <p className="text-xs text-slate-400">活跃进程</p>
           </div>
           <ArrowRight size={16} className="ml-auto text-slate-300" />
         </Link>
@@ -81,6 +85,18 @@ export const Dashboard = () => {
             <p className="text-xs text-slate-400 mb-1">网络连接</p>
             <p className="text-xl font-bold text-slate-800">{netStats.tcp}<span className="text-sm font-normal text-slate-400">/{netStats.udp}</span></p>
             <p className="text-xs text-slate-400">TCP / UDP</p>
+          </div>
+          <ArrowRight size={16} className="ml-auto text-slate-300" />
+        </Link>
+
+        <Link to="/terminal" className="flex items-center gap-4 p-5 bg-white rounded-xl border border-slate-100 hover:border-emerald-200 hover:shadow-sm transition-all">
+          <div className="w-12 h-12 rounded-xl bg-emerald-50 flex items-center justify-center text-emerald-500">
+            <Terminal size={22} />
+          </div>
+          <div>
+            <p className="text-xs text-slate-400 mb-1">终端</p>
+            <p className="text-xl font-bold text-slate-800">Shell</p>
+            <p className="text-xs text-slate-400">命令行终端</p>
           </div>
           <ArrowRight size={16} className="ml-auto text-slate-300" />
         </Link>

@@ -1,0 +1,22 @@
+# Python
+.venv/
+__pycache__/
+*.pyc
+.env
+*.egg-info/
+dist/
+build/
+
+# IDE
+.idea/
+.vscode/
+*.sw?
+*.suo
+*.ntvs*
+
+# Logs
+*.log
+logs/
+
+# Node modules for backend PTY bridge
+app/core/pty_bridge/node_modules/

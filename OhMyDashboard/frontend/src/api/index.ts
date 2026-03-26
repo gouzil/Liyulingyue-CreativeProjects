@@ -1,4 +1,4 @@
-import { type SystemInfo, type DockerContainer, type StartupItem, type ProcessInfo, type NetworkInfo } from '../types.ts';
+import { type SystemInfo, type DockerContainer, type DockerImage, type StartupItem, type ProcessInfo, type NetworkInfo } from '../types.ts';
 
 const API_BASE = '';
 
@@ -9,6 +9,10 @@ export const api = {
   },
   async getDockerInfo(): Promise<DockerContainer[] | { error: string; need_auth?: boolean }> {
     const res = await fetch(`${API_BASE}/system/docker`, { signal: AbortSignal.timeout(10000) });
+    return res.json();
+  },
+  async getDockerImages(): Promise<DockerImage[] | { error: string; need_auth?: boolean }> {
+    const res = await fetch(`${API_BASE}/system/docker/images`, { signal: AbortSignal.timeout(10000) });
     return res.json();
   },
   async dockerAuth(password: string): Promise<{ status: string; message?: string }> {
@@ -48,5 +52,13 @@ export const api = {
   async getServiceLogs(name: string, lines: number = 100): Promise<{ name: string; logs: string[]; error?: string }> {
     const res = await fetch(`${API_BASE}/system/startup/${encodeURIComponent(name)}/logs?lines=${lines}`);
     return res.json();
-  }
+  },
+  async systemPower(action: 'shutdown' | 'restart', password: string): Promise<{ status: string; message?: string }> {
+    const res = await fetch(`${API_BASE}/system/power/${action}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ password }),
+    });
+    return res.json();
+  },
 };

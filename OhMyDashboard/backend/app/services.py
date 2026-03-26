@@ -88,6 +88,30 @@ class SystemService:
             return {"error": f"Docker error: {str(e)}"}
 
     @staticmethod
+    def get_docker_images():
+        try:
+            res = SystemService._run_docker_cmd(["docker", "images", "--format", "{{.Repository}}|{{.Tag}}|{{.ID}}|{{.Size}}|{{.CreatedAt}}"])
+            if res.returncode != 0:
+                err = res.stderr.strip()
+                if "permission denied" in err.lower() or "cannot connect" in err.lower():
+                    return {"error": "Docker not accessible: Permission denied", "need_auth": True}
+                return {"error": f"Docker error: {err}"}
+            images = []
+            for line in res.stdout.strip().splitlines():
+                parts = line.split("|")
+                if len(parts) >= 4:
+                    images.append({
+                        "repository": parts[0],
+                        "tag": parts[1],
+                        "id": parts[2],
+                        "size": parts[3],
+                        "created": parts[4] if len(parts) > 4 else "",
+                    })
+            return images
+        except Exception as e:
+            return {"error": f"Docker error: {str(e)}"}
+
+    @staticmethod
     def manage_docker_container(container_id: str, action: str):
         res = SystemService._run_docker_cmd(["docker", action, container_id])
         if res.returncode != 0:

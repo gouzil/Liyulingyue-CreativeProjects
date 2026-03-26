@@ -20,6 +20,15 @@ export type DockerContainer = {
   name: string;
   status: string;
   image: string;
+  ports?: string;
+};
+
+export type DockerImage = {
+  repository: string;
+  tag: string;
+  id: string;
+  size: string;
+  created: string;
 };
 
 export type StartupItem = {
