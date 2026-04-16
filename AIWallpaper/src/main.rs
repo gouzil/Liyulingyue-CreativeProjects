@@ -272,9 +272,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .with_html(include_str!("../bg/index.html"))?
         // 读取当前系统壁纸路径并注入，避免注入后出现黑屏
         .with_initialization_script(&{
+            let ts = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_secs();
             let file_url = platform::initial_wallpaper_url(&bg_preview_image_path_for_init).unwrap_or_default();
             if file_url.is_empty() { String::new() }
-            else { format!("window.__initialWallpaper = '{}'", file_url) }
+            else { format!("window.__initialWallpaper = '{}?t={}'; console.log('Init wallpaper:', window.__initialWallpaper);", file_url, ts) }
         })
         .build()?;
 
