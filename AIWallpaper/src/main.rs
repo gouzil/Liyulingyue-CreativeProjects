@@ -35,7 +35,14 @@ mod wallpaper_engine;
 #[derive(Serialize, Deserialize, Clone)]
 struct AppConfig {
     api_key: String,
+    #[serde(default = "default_enable_cache")]
+    enable_cache: bool,
+    #[serde(default = "default_cache_limit")]
+    cache_limit: u32,
 }
+
+fn default_enable_cache() -> bool { false }
+fn default_cache_limit() -> u32 { 100 }
 
 #[derive(Serialize, Deserialize)]
 struct IpcMessage {
@@ -52,6 +59,7 @@ enum AppEvent {
     Generated(api::GeneratedImage),
     Saved(String),
     Error(String),
+    SwitchMode(String),
 }
 
 fn export_image_dir(app_data_dir: &std::path::Path) -> PathBuf {
@@ -144,10 +152,18 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let config_path = app_data_dir.join("config.json");
     let initial_config = if let Ok(content) = fs::read_to_string(&config_path) {
         serde_json::from_str::<AppConfig>(&content)
-            .unwrap_or(AppConfig { api_key: "".to_string() })
+            .unwrap_or(AppConfig { 
+                api_key: "".to_string(),
+                enable_cache: false,
+                cache_limit: 100,
+            })
     } else {
         dotenvy::dotenv().ok();
-        AppConfig { api_key: std::env::var("ERNIE_API_KEY").unwrap_or_default() }
+        AppConfig { 
+            api_key: std::env::var("ERNIE_API_KEY").unwrap_or_default(),
+            enable_cache: false,
+            cache_limit: 100,
+        }
     };
 
     let config = Arc::new(Mutex::new(initial_config));
@@ -287,17 +303,28 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         ""
     };
 
-    // 2. 创建控制面板窗口
+    // 2. 创建控制面板窗口 (Lite 版)
     let control_window = WindowBuilder::new()
         .with_title("AIWallpaper 控制中心")
         .with_inner_size(tao::dpi::LogicalSize::new(500.0, 640.0))
+        .with_visible(false)
+        .with_window_icon(window_icon.clone())
+        .build(&event_loop)?;
+
+    // 3. 创建 Pro 版窗口 (默认隐藏)
+    let pro_window = WindowBuilder::new()
+        .with_title("AIWallpaper Pro")
+        .with_inner_size(tao::dpi::LogicalSize::new(1200.0, 800.0))
         .with_visible(false)
         .with_window_icon(window_icon)
         .build(&event_loop)?;
 
     let preview_image_path = app_data_dir.join("cache").join("current_wallpaper.png");
+    let preview_image_path_lite = preview_image_path.clone();
+    let preview_image_path_pro = preview_image_path.clone();
 
     let (tx, mut rx) = mpsc::channel::<String>(32);
+    let tx_pro = tx.clone();
     let control_webview = WebViewBuilder::new(control_window)?
         .with_custom_protocol("aiwallpaper".into(), move |request| {
             let request_path = request.uri().path();
@@ -309,7 +336,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     .map_err(Into::into);
             }
 
-            match fs::read(&preview_image_path) {
+            match fs::read(&preview_image_path_lite) {
                 Ok(bytes) => Response::builder()
                     .status(StatusCode::OK)
                     .header(CONTENT_TYPE, "image/png")
@@ -329,6 +356,74 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         })
         .build()?;
 
+    let pro_dist_path = std::env::current_dir()?.join("ui-pro").join("dist");
+    let pro_dist_path_clone = pro_dist_path.clone();
+
+    let pro_webview = WebViewBuilder::new(pro_window)?
+        .with_custom_protocol("pro".into(), move |request| {
+            let path = request.uri().path();
+            let uri = request.uri().to_string();
+            let mut file_path = pro_dist_path_clone.clone();
+            
+            // 拦截图片预览请求
+            if path.contains("current_wallpaper.png") || uri.contains("current_wallpaper.png") {
+                match fs::read(&preview_image_path_pro) {
+                    Ok(bytes) => {
+                        return Response::builder()
+                            .status(StatusCode::OK)
+                            .header(CONTENT_TYPE, "image/png")
+                            .header("Cache-Control", "no-cache, no-store, must-revalidate")
+                            .body(Cow::Owned(bytes))
+                            .map_err(Into::into);
+                    }
+                    Err(e) => {
+                        eprintln!("Pro 预览图读取失败: {:?}, 路径: {:?}", e, preview_image_path_pro);
+                        return Response::builder()
+                            .status(StatusCode::NOT_FOUND)
+                            .body(Cow::Owned(Vec::new()))
+                            .map_err(Into::into);
+                    }
+                }
+            }
+
+            let relative_path = if path == "/" || path == "" {
+                "index.html"
+            } else {
+                path.trim_start_matches('/')
+            };
+            
+            file_path.push(relative_path);
+            
+            match fs::read(&file_path) {
+                Ok(bytes) => {
+                    let mime = if file_path.extension().is_some_and(|ext| ext == "js") {
+                        "application/javascript"
+                    } else if file_path.extension().is_some_and(|ext| ext == "css") {
+                        "text/css"
+                    } else if file_path.extension().is_some_and(|ext| ext == "html") {
+                        "text/html"
+                    } else {
+                        "application/octet-stream"
+                    };
+
+                    Response::builder()
+                        .status(StatusCode::OK)
+                        .header(CONTENT_TYPE, mime)
+                        .body(Cow::Owned(bytes))
+                        .map_err(Into::into)
+                },
+                Err(_) => Response::builder()
+                    .status(StatusCode::NOT_FOUND)
+                    .body(Cow::Owned(Vec::new()))
+                    .map_err(Into::into),
+            }
+        })
+        .with_url("pro://localhost/")?
+        .with_ipc_handler(move |_window, request| {
+            let _ = tx_pro.try_send(request);
+        })
+        .build()?;
+
     let proxy = event_loop.create_proxy();
     let config_task = config.clone();
     let app_data_dir_task = app_data_dir.clone();
@@ -345,6 +440,21 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     }
                     "close" => {
                         let _ = proxy.send_event(AppEvent::Close);
+                    }
+                    "switch_mode" => {
+                        let _ = proxy.send_event(AppEvent::SwitchMode(msg.value));
+                    }
+                    "save_config" => {
+                        let mut cfg = config_task.lock().unwrap();
+                        if let Ok(new_cfg) = serde_json::from_str::<AppConfig>(&msg.value) {
+                             *cfg = new_cfg;
+                             let app_data_dir = std::env::var("LOCALAPPDATA")
+                                .map(|ld| std::path::PathBuf::from(ld).join("AIWallpaper"))
+                                .unwrap_or_else(|_| std::env::temp_dir().join("AIWallpaper"));
+                            let cfg_path = app_data_dir.join("config.json");
+                            let _ = fs::write(cfg_path, serde_json::to_string(&*cfg).unwrap());
+                            println!("配置已保存并应用: {:?}", msg.value);
+                        }
                     }
                     "save_key" => {
                         let mut cfg = config_task.lock().unwrap();
@@ -416,8 +526,17 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             Event::UserEvent(app_event) => {
                 match app_event {
                     AppEvent::Ready => {
-                    control_webview.window().set_visible(true);
-                    control_webview.window().set_focus();
+                        control_webview.window().set_visible(true);
+                        control_webview.window().set_focus();
+
+                        // 向 UI 发送当前配置
+                        let cfg = config.lock().unwrap();
+                        let js = format!(
+                            "if (window.onConfigLoaded) {{ window.onConfigLoaded({}) }}",
+                            serde_json::to_string(&*cfg).unwrap()
+                        );
+                        let _ = control_webview.evaluate_script(&js);
+                        let _ = pro_webview.evaluate_script(&js);
                     }
                     AppEvent::Minimize => {
                         control_webview.window().set_visible(false);
@@ -425,9 +544,26 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     AppEvent::Close => {
                         *control_flow = ControlFlow::Exit;
                     }
+                    AppEvent::SwitchMode(mode) => {
+                        if mode == "pro" {
+                            control_webview.window().set_visible(false);
+                            pro_webview.window().set_visible(true);
+                            pro_webview.window().set_focus();
+                        } else {
+                            pro_webview.window().set_visible(false);
+                            control_webview.window().set_visible(true);
+                            control_webview.window().set_focus();
+                        }
+                    }
                     AppEvent::Generated(image) => {
+                        // 将图片编码为 base64 data URL，直接内嵌发送，绕开自定义协议加载问题
+                        let preview_path = app_data_dir.join("cache").join("current_wallpaper.png");
+                        let data_url = fs::read(&preview_path)
+                            .map(|bytes| format!("data:image/png;base64,{}", base64::Engine::encode(&base64::engine::general_purpose::STANDARD, &bytes)))
+                            .unwrap_or_default();
+
                         let ui_payload = serde_json::json!({
-                            "previewUrl": image.preview_url,
+                            "previewUrl": data_url,
                             "viewUrl": image.wallpaper_url,
                         });
                         let js_ui = format!(
@@ -435,6 +571,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                             ui_payload
                         );
                         let _ = control_webview.evaluate_script(&js_ui);
+                        let _ = pro_webview.evaluate_script(&js_ui);
 
                         let js_bg = format!(
                             "window.setWallpaper({}, 'Prompt')",
@@ -448,6 +585,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                             serde_json::to_string(&path).unwrap()
                         );
                         let _ = control_webview.evaluate_script(&js_ui);
+                        let _ = pro_webview.evaluate_script(&js_ui);
                     }
                     AppEvent::Error(err_msg) => {
                         let js_ui = format!(
@@ -455,6 +593,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                             serde_json::to_string(&err_msg).unwrap()
                         );
                         let _ = control_webview.evaluate_script(&js_ui);
+                        let _ = pro_webview.evaluate_script(&js_ui);
                     }
                 }
             }
