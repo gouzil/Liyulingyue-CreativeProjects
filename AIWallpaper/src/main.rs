@@ -29,6 +29,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use serde::{Deserialize, Serialize};
 
 mod api;
+mod platform;
 mod wallpaper_engine;
 
 #[derive(Serialize, Deserialize, Clone)]
@@ -119,6 +120,14 @@ fn load_window_icon() -> Result<tao::window::Icon, Box<dyn std::error::Error>> {
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let platform_paths = platform::app_paths();
+    // 1. 确保目录存在
+    let _ = fs::create_dir_all(&platform_paths.app_data_dir);
+    let _ = fs::create_dir_all(&platform_paths.cache_dir);
+
+    // 平台启动配置
+    let _ = platform::configure_process(&platform_paths);
+
     // 定义总配置目录在 AppData
     let app_data_dir = std::env::var("LOCALAPPDATA")
         .map(|ld| std::path::PathBuf::from(ld).join("AIWallpaper"))
@@ -142,7 +151,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     };
 
     let config = Arc::new(Mutex::new(initial_config));
-    let event_loop = EventLoop::<AppEvent>::with_user_event();
+    let mut event_loop = EventLoop::<AppEvent>::with_user_event();
+    
+    // 允许平台修改 EventLoop (macOS 必需)
+    platform::configure_event_loop(&event_loop);
 
     let tray_menu = Menu::new();
     let show_item = MenuItem::new("显示控制面板", true, None);
@@ -184,12 +196,16 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let window_icon = load_window_icon().ok();
 
     // 1. 创建背景窗口 (WebView2 壁纸层)
-    let bg_window = WindowBuilder::new()
+    let bg_builder = WindowBuilder::new()
         .with_title("AIWallpaper Layer")
         .with_decorations(false)
         .with_visible(false)
-        .with_window_icon(window_icon.clone())
-        .build(&event_loop)?;
+        .with_window_icon(window_icon.clone());
+    
+    // 针对平台定制 Builder (macOS 必需属性)
+    let bg_builder = platform::configure_background_window_builder(bg_builder, event_loop.primary_monitor());
+    
+    let bg_window = bg_builder.build(&event_loop)?;
 
     // 定义 WebView2 数据文件夹路径
     let data_dir = app_data_dir.join("WebView2");
@@ -198,27 +214,35 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
 
     let bg_hwnd = bg_window.hwnd() as isize;
-    let workerw = unsafe { wallpaper_engine::get_wallpaper_workerw() };
     
-    if workerw != 0 {
-        unsafe {
-            // 设置父窗口为 WorkerW (Lively 核心技巧)
-            SetParent(bg_hwnd, workerw);
-            
-            // 复刻 Lively 窗口样式：TOOLWINDOW (0x80) | NOACTIVATE (0x08000000)
-            let ex_style = GetWindowLongPtrA(bg_hwnd, GWL_EXSTYLE);
-            SetWindowLongPtrA(bg_hwnd, GWL_EXSTYLE, ex_style | WS_EX_TOOLWINDOW as isize | WS_EX_NOACTIVATE as isize);
-            
-            // 确保同步渲染位置
-            SetWindowPos(bg_hwnd, HWND_BOTTOM, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE | SWP_SHOWWINDOW);
+    // Windows 下执行传统的劫持逻辑
+    #[cfg(target_os = "windows")]
+    {
+        let workerw = unsafe { wallpaper_engine::get_wallpaper_workerw() };
+        if workerw != 0 {
+            unsafe {
+                // 设置父窗口为 WorkerW (Lively 核心技巧)
+                SetParent(bg_hwnd, workerw);
+                
+                // 复刻 Lively 窗口样式：TOOLWINDOW (0x80) | NOACTIVATE (0x08000000)
+                let ex_style = GetWindowLongPtrA(bg_hwnd, GWL_EXSTYLE);
+                SetWindowLongPtrA(bg_hwnd, GWL_EXSTYLE, ex_style | WS_EX_TOOLWINDOW as isize | WS_EX_NOACTIVATE as isize);
+                
+                // 确保同步渲染位置
+                SetWindowPos(bg_hwnd, HWND_BOTTOM, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE | SWP_SHOWWINDOW);
+            }
+            bg_window.set_maximized(true);
+            bg_window.set_visible(true);
+        } else {
+            eprintln!("无法定位壁纸层窗口！");
         }
-        bg_window.set_maximized(true);
-        bg_window.set_visible(true);
-    } else {
-        eprintln!("无法定位壁纸层窗口！");
     }
 
+    // 调用平台特定的附加逻辑 (macOS 在此进行劫持)
+    let _ = platform::attach_background_window(&bg_window);
+
     let bg_preview_image_path = app_data_dir.join("cache").join("current_wallpaper.png");
+    let bg_preview_image_path_for_init = bg_preview_image_path.clone();
 
     let bg_webview = WebViewBuilder::new(bg_window)?
         .with_custom_protocol("aiwallpaper".into(), move |request| {
@@ -248,15 +272,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .with_html(include_str!("../bg/index.html"))?
         // 读取当前系统壁纸路径并注入，避免注入后出现黑屏
         .with_initialization_script(&{
-            let file_url = unsafe {
-                let mut buf = vec![0u16; 260];
-                SystemParametersInfoW(SPI_GETDESKWALLPAPER, 260, buf.as_mut_ptr() as *mut _, 0);
-                let path = String::from_utf16_lossy(&buf)
-                    .trim_end_matches('\0')
-                    .to_string();
-                if path.is_empty() { String::new() }
-                else { format!("file:///{}", path.replace('\\', "/")) }
-            };
+            let file_url = platform::initial_wallpaper_url(&bg_preview_image_path_for_init).unwrap_or_default();
             if file_url.is_empty() { String::new() }
             else { format!("window.__initialWallpaper = '{}'", file_url) }
         })
