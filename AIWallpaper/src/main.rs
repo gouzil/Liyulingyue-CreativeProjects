@@ -39,10 +39,16 @@ struct AppConfig {
     enable_cache: bool,
     #[serde(default = "default_cache_limit")]
     cache_limit: u32,
+    #[serde(default = "default_auto_refresh_hours")]
+    auto_refresh_hours: u32,
+    #[serde(default = "default_auto_prompt")]
+    auto_prompt: String,
 }
 
 fn default_enable_cache() -> bool { false }
 fn default_cache_limit() -> u32 { 100 }
+fn default_auto_refresh_hours() -> u32 { 24 }
+fn default_auto_prompt() -> String { "Cyberpunk city, neon lights, 8k resolution".to_string() }
 
 #[derive(Serialize, Deserialize)]
 struct IpcMessage {
@@ -156,6 +162,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 api_key: "".to_string(),
                 enable_cache: false,
                 cache_limit: 100,
+                auto_refresh_hours: 24,
+                auto_prompt: "Cyberpunk city, neon lights, 8k resolution".to_string(),
             })
     } else {
         dotenvy::dotenv().ok();
@@ -163,6 +171,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             api_key: std::env::var("ERNIE_API_KEY").unwrap_or_default(),
             enable_cache: false,
             cache_limit: 100,
+            auto_refresh_hours: 24,
+            auto_prompt: "Cyberpunk city, neon lights, 8k resolution".to_string(),
         }
     };
 

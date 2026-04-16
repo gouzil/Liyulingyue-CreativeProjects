@@ -1,0 +1,95 @@
+import React from 'react';
+
+interface CreatePageProps {
+  prompt: string;
+  setPrompt: (v: string) => void;
+  handleRandomPrompt: () => void;
+  handleGenerate: () => void;
+  isGenerating: boolean;
+  statusMsg: string;
+  previewUrl: string;
+  sendIpc: (cmd: string, arg?: any) => void;
+  setActiveTab: (tab: string) => void;
+}
+
+const CreatePage: React.FC<CreatePageProps> = ({
+  prompt, setPrompt, handleRandomPrompt, handleGenerate,
+  isGenerating, statusMsg, previewUrl, sendIpc, setActiveTab
+}) => {
+  return (
+    <div className="space-y-10 animate-in fade-in slide-in-from-bottom-6 duration-700">
+      <div className="bg-white border border-slate-200 rounded-[2.5rem] p-10 shadow-xl relative overflow-hidden group">
+        <div className="absolute top-0 right-0 p-8 opacity-5 pointer-events-none group-hover:scale-110 transition-transform duration-1000">
+          <svg xmlns="http://www.w3.org/2000/svg" width="120" height="120" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1" strokeLinecap="round" strokeLinejoin="round" className="text-blue-500"><path d="M12 3v19" /><path d="M5 8h14" /><path d="M15 21a3 3 0 0 0-3-3 3 3 0 0 0-3 3" /><path d="M19 12a3 3 0 0 0-3-3 3 3 0 0 0-3 3" /></svg>
+        </div>
+        <h2 className="text-3xl font-bold mb-8 flex items-center gap-3 text-slate-900"><span className="w-1.5 h-8 bg-blue-600 rounded-full"></span>开启创作灵感</h2>
+        <textarea
+          value={prompt}
+          onChange={(e) => setPrompt(e.target.value)}
+          placeholder="描述你想要的画面..."
+          className="w-full bg-slate-50 border border-slate-200 rounded-3xl p-6 text-xl min-h-[180px] focus:ring-4 focus:ring-blue-500/10 focus:border-blue-500/50 outline-none transition-all resize-none shadow-inner placeholder:text-slate-300 leading-relaxed text-slate-700"
+        />
+        <div className="mt-10 flex items-center justify-between">
+          <button onClick={handleRandomPrompt} className="flex items-center gap-2 px-5 py-2.5 rounded-2xl bg-white border border-slate-200 hover:bg-slate-50 text-sm font-semibold transition-all active:scale-95 text-slate-600">
+            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="text-amber-500"><rect width="18" height="18" x="3" y="3" rx="2" ry="2" /><path d="M7 7h.01" /><path d="M17 7h.01" /><path d="M7 17h.01" /><path d="M17 17h.01" /><path d="M12 12h.01" /></svg>
+            灵感骰子
+          </button>
+          <div className="flex items-center gap-6">
+            {statusMsg && <span className="text-sm font-medium text-blue-600 animate-pulse">{statusMsg}</span>}
+            <button
+              onClick={handleGenerate}
+              disabled={isGenerating || !prompt.trim()}
+              className={`bg-slate-900 hover:bg-black text-white px-12 py-4 rounded-[1.25rem] font-black text-xl shadow-2xl shadow-slate-200 active:scale-95 transition-all flex items-center gap-3 ${isGenerating ? "opacity-50 cursor-not-allowed" : ""}`}
+            >
+              {isGenerating ? "正在生成..." : "开始生成"}
+              <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><path d="M5 12h14" /><path d="m12 5 7 7-7 7" /></svg>
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-2 gap-10">
+        <div className="bg-white border border-slate-200 rounded-[2.5rem] p-8 shadow-lg">
+          <div className="flex items-center justify-between mb-6">
+            <h3 className="text-slate-400 text-xs font-black uppercase tracking-[0.2em]">当前壁纸预览</h3>
+            <div className={`w-2.5 h-2.5 rounded-full ${isGenerating ? "bg-blue-500 animate-pulse" : "bg-green-500"}`}></div>
+          </div>
+          <div className="aspect-video bg-slate-100 rounded-3xl overflow-hidden border border-slate-200 group relative shadow-inner flex items-center justify-center">
+            {previewUrl ? <img src={previewUrl} className="w-full h-full object-cover" alt="Preview" /> : <div className="text-slate-300 text-sm italic">等待生成...</div>}
+            {previewUrl && (
+              <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-4 border-2 border-transparent group-hover:border-blue-500/50 rounded-3xl">
+                <button onClick={() => sendIpc("save_image")} className="p-3 bg-white rounded-2xl text-slate-900 shadow-xl hover:scale-110 transition-transform">
+                  <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" /><polyline points="7 10 12 15 17 10" /><line x1="12" x2="12" y1="15" y2="3" /></svg>
+                </button>
+              </div>
+            )}
+          </div>
+        </div>
+        <div className="bg-white border border-slate-200 rounded-[2.5rem] p-8 shadow-lg">
+          <div className="flex items-center justify-between mb-6">
+            <h3 className="text-slate-400 text-xs font-black uppercase tracking-[0.2em]">自动化任务</h3>
+            <button onClick={() => setActiveTab("tasks")} className="text-blue-600 text-[10px] font-bold hover:underline">管理全部</button>
+          </div>
+          <div className="space-y-4">
+            <div className="flex items-center justify-between p-5 rounded-2xl bg-blue-50 border border-blue-100 border-l-4 border-l-blue-600">
+              <div className="flex items-center gap-4">
+                <div className="p-2 bg-white rounded-lg text-blue-600 shadow-sm">
+                  <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10" /><polyline points="12 6 12 12 16 14" /></svg>
+                </div>
+                <div>
+                  <div className="text-sm font-bold text-slate-800">智能自动更新</div>
+                  <div className="text-[10px] text-slate-500">根据您的设置自动运行</div>
+                </div>
+              </div>
+              <div className="h-1.5 w-12 bg-blue-200 rounded-full overflow-hidden">
+                <div className="h-full bg-blue-600 w-[65%]"></div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+export default CreatePage;
