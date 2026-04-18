@@ -2,30 +2,83 @@ import os
 import ctypes
 import base64
 import argparse
-from openai import OpenAI
+import platform
+import subprocess
 
 
-def ensure_windows():
-    if os.name != "nt":
-        print("错误: 当前仅支持 Windows。该脚本会调用 Windows SPI 接口设置壁纸。")
+def get_current_platform():
+    return platform.system()
+
+
+def ensure_supported_platform():
+    current_platform = get_current_platform()
+    if current_platform not in {"Windows", "Darwin"}:
+        print("错误: 当前仅支持 Windows 和 macOS。")
         return False
     return True
 
-# 1. 设置壁纸的核心逻辑 (Windows API)
+
+def set_wallpaper_windows(abs_path):
+    # SPI_SETDESKWALLPAPER = 20
+    # SPIF_UPDATEINIFILE = 0x01 | SPIF_SENDWININICHANGE = 0x02
+    ctypes.windll.user32.SystemParametersInfoW(20, 0, abs_path, 0x01 | 0x02)
+    return True
+
+
+def set_wallpaper_macos(abs_path):
+    script = """
+on run argv
+    set wallpaperPath to POSIX file (item 1 of argv)
+    tell application "System Events"
+        set picture of every desktop to wallpaperPath
+    end tell
+end run
+"""
+    try:
+        subprocess.run(
+            ["osascript", "-e", script, abs_path],
+            check=True,
+            capture_output=True,
+            text=True
+        )
+        return True
+    except subprocess.CalledProcessError as error:
+        error_message = error.stderr.strip() or error.stdout.strip() or str(error)
+        print(f"macOS 设置壁纸失败: {error_message}")
+        print("请确认 Terminal 或 Python 已在“系统设置 > 隐私与安全性 > 自动化”中获得控制 System Events 的权限。")
+        return False
+
+
+# 1. 设置壁纸的核心逻辑
 def set_wallpaper(image_path):
     abs_path = os.path.abspath(image_path)
     if not os.path.exists(abs_path):
         print(f"错误: 路径 {abs_path} 不存在。")
         return False
-    
-    # SPI_SETDESKWALLPAPER = 20
-    # SPIF_UPDATEINIFILE = 0x01 | SPIF_SENDWININICHANGE = 0x02
-    ctypes.windll.user32.SystemParametersInfoW(20, 0, abs_path, 0x01 | 0x02)
+
+    current_platform = get_current_platform()
+    if current_platform == "Windows":
+        success = set_wallpaper_windows(abs_path)
+    elif current_platform == "Darwin":
+        success = set_wallpaper_macos(abs_path)
+    else:
+        print(f"错误: 暂不支持的平台: {current_platform}")
+        return False
+
+    if not success:
+        return False
+
     print(f"壁纸已成功设置为: {abs_path}")
     return True
 
 # 2. 调用 API 生成图片
 def generate_wallpaper(args):
+    try:
+        from openai import OpenAI
+    except ImportError:
+        print("错误: 缺少依赖 openai，请先执行 `pip install openai`。")
+        return None
+
     # 使用 OpenAI Python SDK 访问兼容 OpenAI 协议的图像生成端点。
     client = OpenAI(
         api_key=args.api_key,
@@ -69,7 +122,7 @@ def generate_wallpaper(args):
 
 # 3. 主流程
 def main():
-    parser = argparse.ArgumentParser(description="AIWallpaper Skill - 百度文心 API 生成并设置桌面壁纸")
+    parser = argparse.ArgumentParser(description="AIWallpaper Skill - 百度文心 API 生成并设置 Windows/macOS 桌面壁纸")
     
     # 必须参数或通过环境变量获取
     parser.add_argument("--api_key", type=str, default=os.getenv("BAIDU_API_KEY"), help="API Key (也可通过环境变量 BAIDU_API_KEY 设置)")
@@ -84,7 +137,7 @@ def main():
 
     args = parser.parse_args()
 
-    if not ensure_windows():
+    if not ensure_supported_platform():
         return
 
     # API Key 检查
