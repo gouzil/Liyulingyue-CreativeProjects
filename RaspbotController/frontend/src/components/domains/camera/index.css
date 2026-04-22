@@ -1,11 +1,11 @@
 .camera-container {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 12px;
   padding: 16px;
-  background: var(--card-bg, #fff);
-  border-radius: 8px;
-  box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+  background: var(--card-bg, #1a1a2e);
+  border-radius: 12px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
 }
 
 .camera-header {
@@ -16,38 +16,164 @@
 
 .camera-header h3 {
   margin: 0;
-  font-size: 16px;
+  font-size: 14px;
+  color: var(--text-secondary, #888);
+  text-transform: uppercase;
+  letter-spacing: 1px;
 }
 
-.status-indicator {
+.camera-controls {
+  display: flex;
+  gap: 8px;
+}
+
+.camera-toggle {
+  padding: 6px 14px;
+  border: none;
+  border-radius: 6px;
   font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s;
+  background: var(--btn-bg, #2a2a4a);
+  color: var(--text-color, #eee);
 }
 
-.status-indicator.connected {
-  color: #4caf50;
+.camera-toggle.on {
+  background: linear-gradient(135deg, #00c853, #00e676);
+  color: #000;
 }
 
-.status-indicator.disconnected {
-  color: #f44336;
+.camera-toggle.off {
+  background: var(--btn-bg, #2a2a4a);
+  color: var(--text-secondary, #888);
+}
+
+.camera-settings {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 12px;
+  background: var(--settings-bg, #16162a);
+  border-radius: 8px;
+}
+
+.setting-group {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.setting-group label {
+  font-size: 11px;
+  color: var(--text-secondary, #888);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.mode-selector {
+  display: flex;
+  gap: 4px;
+}
+
+.mode-btn {
+  flex: 1;
+  padding: 8px 12px;
+  border: 1px solid var(--border-color, #444);
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text-color, #eee);
+  font-size: 12px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.mode-btn:hover {
+  background: var(--btn-hover, #2a2a4a);
+}
+
+.mode-btn.active {
+  background: var(--accent-color, #6c5ce7);
+  border-color: var(--accent-color, #6c5ce7);
+  color: white;
+}
+
+.quality-slider {
+  width: 100%;
+  height: 4px;
+  -webkit-appearance: none;
+  appearance: none;
+  background: var(--slider-bg, #2a2a4a);
+  border-radius: 2px;
+  outline: none;
+  cursor: pointer;
+}
+
+.quality-slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: var(--accent-color, #6c5ce7);
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.quality-slider::-webkit-slider-thumb:hover {
+  transform: scale(1.1);
 }
 
 .camera-frame {
+  position: relative;
   background: #000;
-  border-radius: 4px;
+  border-radius: 8px;
   overflow: hidden;
   aspect-ratio: 4/3;
 }
 
-.camera-frame img {
+.camera-frame.disabled {
+  opacity: 0.5;
+}
+
+.camera-frame canvas,
+.camera-frame video {
   width: 100%;
   height: 100%;
   object-fit: cover;
   display: block;
 }
 
-.camera-frame canvas {
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-  display: block;
+.camera-overlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.7);
+  color: var(--text-secondary, #888);
+  font-size: 14px;
+}
+
+.camera-status {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.status-indicator {
+  font-size: 12px;
+  padding: 4px 8px;
+  border-radius: 4px;
+  background: var(--status-bg, #16162a);
+}
+
+.status-indicator.connected {
+  color: #00e676;
+}
+
+.status-indicator.disconnected {
+  color: var(--text-secondary, #888);
 }

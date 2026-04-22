@@ -1,0 +1,113 @@
+.servo-container {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 16px;
+  background: var(--card-bg, #1a1a2e);
+  border-radius: 12px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+}
+
+.servo-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.servo-header h3 {
+  margin: 0;
+  font-size: 14px;
+  color: var(--text-secondary, #888);
+  text-transform: uppercase;
+  letter-spacing: 1px;
+}
+
+.reset-btn {
+  padding: 6px 12px;
+  border: 1px solid var(--border-color, #444);
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text-color, #eee);
+  font-size: 12px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.reset-btn:hover {
+  background: var(--btn-hover, #2a2a4a);
+  border-color: var(--accent-color, #6c5ce7);
+}
+
+.servo-channels {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.servo-channel {
+  padding: 10px 12px;
+  background: var(--channel-bg, #16162a);
+  border-radius: 8px;
+  transition: all 0.2s;
+}
+
+.servo-channel.active {
+  background: var(--channel-active, #1e1e3a);
+  box-shadow: 0 0 0 1px var(--accent-color, #6c5ce7);
+}
+
+.channel-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 8px;
+}
+
+.channel-name {
+  font-size: 12px;
+  color: var(--text-secondary, #888);
+}
+
+.channel-angle {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--accent-color, #6c5ce7);
+  font-variant-numeric: tabular-nums;
+}
+
+.servo-slider {
+  width: 100%;
+  height: 6px;
+  -webkit-appearance: none;
+  appearance: none;
+  background: var(--slider-bg, #2a2a4a);
+  border-radius: 3px;
+  outline: none;
+  cursor: pointer;
+}
+
+.servo-slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: var(--accent-color, #6c5ce7);
+  cursor: pointer;
+  transition: all 0.2s;
+  box-shadow: 0 2px 6px rgba(108, 92, 231, 0.4);
+}
+
+.servo-slider::-webkit-slider-thumb:hover {
+  transform: scale(1.1);
+  box-shadow: 0 2px 10px rgba(108, 92, 231, 0.6);
+}
+
+.servo-slider::-moz-range-thumb {
+  width: 16px;
+  height: 16px;
+  border: none;
+  border-radius: 50%;
+  background: var(--accent-color, #6c5ce7);
+  cursor: pointer;
+}

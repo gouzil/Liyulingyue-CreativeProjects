@@ -35,6 +35,19 @@ export interface ServoResponse {
   angle: number;
 }
 
+export type BuzzerAction = 'on' | 'off' | 'beep' | 'set_freq';
+
+export interface BuzzerParams {
+  action: BuzzerAction;
+  frequency?: number;
+}
+
+export interface BuzzerResponse {
+  status: string;
+  action: string;
+  frequency?: number;
+}
+
 export const carApi = {
   move: async (params: MoveParams): Promise<MoveResponse> => {
     const response = await apiClient.post<MoveResponse>('/car/move', params);
@@ -53,6 +66,11 @@ export const carApi = {
 
   servo: async (params: ServoParams): Promise<ServoResponse> => {
     const response = await apiClient.post<ServoResponse>('/car/servo', params);
+    return response.data;
+  },
+
+  buzzer: async (params: BuzzerParams): Promise<BuzzerResponse> => {
+    const response = await apiClient.post<BuzzerResponse>('/car/buzzer', params);
     return response.data;
   },
 };

@@ -7,8 +7,16 @@ from ..schemas import (
     ManualControlResponse,
     ServoControlRequest,
     ServoControlResponse,
+    BuzzerRequest,
+    BuzzerResponse,
 )
 from ..hardware.car import YB_Pcb_Car
+import socket
+import struct
+
+BUZZER_HOST = "127.0.0.1"
+BUZZER_PORT = 9002
+BUZZER_MAGIC = b"BUZ1"
 
 router = APIRouter(prefix="/api/v1/car", tags=["Car"])
 
@@ -67,3 +75,24 @@ async def manual(req: ManualControlRequest):
 async def servo(req: ServoControlRequest):
     get_car().Ctrl_Servo(req.id, req.angle)
     return ServoControlResponse(status="ok", id=req.id, angle=req.angle)
+
+
+@router.post("/buzzer", response_model=BuzzerResponse)
+async def buzzer(req: BuzzerRequest):
+    try:
+        sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        if req.action == "on":
+            sock.sendto(BUZZER_MAGIC + bytes([0x01]), (BUZZER_HOST, BUZZER_PORT))
+        elif req.action == "off":
+            sock.sendto(BUZZER_MAGIC + bytes([0x02]), (BUZZER_HOST, BUZZER_PORT))
+        elif req.action == "beep":
+            sock.sendto(BUZZER_MAGIC + bytes([0x03]) + struct.pack("<H", 200), (BUZZER_HOST, BUZZER_PORT))
+        elif req.action == "set_freq":
+            sock.sendto(BUZZER_MAGIC + bytes([0x04]) + struct.pack("<I", req.frequency), (BUZZER_HOST, BUZZER_PORT))
+        else:
+            sock.close()
+            raise HTTPException(status_code=400, detail=f"Invalid action: {req.action}")
+        sock.close()
+    except Exception as e:
+        print(f"[buzzer] UDP error: {e}")
+    return BuzzerResponse(status="ok", action=req.action, frequency=req.frequency)
