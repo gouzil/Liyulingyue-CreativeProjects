@@ -6,6 +6,7 @@ cd "$SCRIPT_DIR"
 echo "Killing existing processes..."
 sudo pkill -f raspbot.py || true
 pkill -f "camera_udp.py" || true
+pkill -f "buzzer_udp.py" || true
 sleep 1
 
 if [ ! -d ".venv" ]; then
@@ -30,6 +31,19 @@ fi
 
 echo "Camera UDP started. Log:"
 tail -1 /tmp/camera_udp.log
+
+echo "Starting Buzzer UDP Server..."
+nohup sudo /usr/bin/python3 "$SCRIPT_DIR/app/hardware/buzzer_udp.py" > /tmp/buzzer_udp.log 2>&1 &
+echo "Buzzer UDP PID: $!"
+sleep 1
+
+if ps -p $! > /dev/null 2>&1; then
+    echo "Buzzer UDP started. Log:"
+    tail -1 /tmp/buzzer_udp.log
+else
+    echo "WARNING: buzzer_udp may have failed"
+    cat /tmp/buzzer_udp.log
+fi
 
 echo "Starting FastAPI..."
 python -m uvicorn app:create_app --host 0.0.0.0 --port 8000

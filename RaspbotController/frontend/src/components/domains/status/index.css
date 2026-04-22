@@ -1,30 +1,56 @@
 .status-bar {
   display: flex;
   gap: 24px;
-  padding: 8px 16px;
-  background: var(--card-bg, #fff);
-  border-radius: 8px;
-  box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+  padding: 12px 20px;
+  background: var(--card-bg, #1a1a2e);
+  border-radius: 12px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+}
+
+.status-section {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.section-label {
+  font-size: 10px;
+  color: var(--text-secondary, #666);
+  text-transform: uppercase;
+  letter-spacing: 1px;
+}
+
+.status-items {
+  display: flex;
+  gap: 16px;
 }
 
 .status-item {
   display: flex;
   align-items: center;
   gap: 6px;
-  font-size: 14px;
-  color: var(--text-color, #333);
+  font-size: 13px;
+  color: var(--text-color, #eee);
 }
 
 .dot {
   width: 8px;
   height: 8px;
   border-radius: 50%;
+  animation: pulse 2s infinite;
 }
 
 .dot.green {
-  background: #4caf50;
+  background: #00e676;
+  box-shadow: 0 0 8px rgba(0, 230, 118, 0.5);
 }
 
 .dot.red {
   background: #f44336;
+  box-shadow: 0 0 8px rgba(244, 67, 54, 0.5);
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.6; }
 }

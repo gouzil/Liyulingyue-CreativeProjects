@@ -1,0 +1,1 @@
+export { BuzzerControl } from './BuzzerControl';

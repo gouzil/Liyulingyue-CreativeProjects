@@ -6,6 +6,8 @@ from .car import (
     ManualControlResponse,
     ServoControlRequest,
     ServoControlResponse,
+    BuzzerRequest,
+    BuzzerResponse,
 )
 from .camera import HealthResponse
 
@@ -17,5 +19,7 @@ __all__ = [
     "ManualControlResponse",
     "ServoControlRequest",
     "ServoControlResponse",
+    "BuzzerRequest",
+    "BuzzerResponse",
     "HealthResponse",
 ]

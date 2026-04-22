@@ -16,6 +16,32 @@ def get_hardware_device():
         print(json.dumps({"error": "smbus not available"}))
         sys.exit(1)
 
+def init_buzzer():
+    try:
+        import RPi.GPIO as GPIO
+        GPIO.setwarnings(False)
+        GPIO.setmode(GPIO.BOARD)
+        GPIO.setup(32, GPIO.OUT)
+        return GPIO.PWM(32, 440)
+    except Exception:
+        return None
+
+BUZZER_PWM = None
+
+def beep_on():
+    global BUZZER_PWM
+    if BUZZER_PWM is None:
+        BUZZER_PWM = init_buzzer()
+    if BUZZER_PWM:
+        BUZZER_PWM.start(50)
+
+def beep_off():
+    global BUZZER_PWM
+    if BUZZER_PWM is None:
+        BUZZER_PWM = init_buzzer()
+    if BUZZER_PWM:
+        BUZZER_PWM.ChangeDutyCycle(0)
+
 DEVICE = None
 
 def init_car():
@@ -71,6 +97,8 @@ COMMANDS = {
     "spin_right": lambda s1, s2: car_spin_right(s1, s2) or print(json.dumps({"status": "ok"})),
     "servo": lambda sid, ang: ctrl_servo(sid, ang) or print(json.dumps({"status": "ok"})),
     "control": lambda l_dir, l_s, r_dir, r_s: ctrl_car(l_dir, l_s, r_dir, r_s) or print(json.dumps({"status": "ok"})),
+    "beep_on": lambda: beep_on() or print(json.dumps({"status": "ok"})),
+    "beep_off": lambda: beep_off() or print(json.dumps({"status": "ok"})),
 }
 
 def main():

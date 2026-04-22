@@ -36,3 +36,14 @@ class ServoControlResponse(BaseModel):
     status: str
     id: int
     angle: int
+
+
+class BuzzerRequest(BaseModel):
+    action: str = Field(..., description="on|off|beep|set_freq")
+    frequency: int = Field(440, ge=20, le=2000, description="Frequency in Hz (for set_freq)")
+
+
+class BuzzerResponse(BaseModel):
+    status: str
+    action: str
+    frequency: int | None = None
