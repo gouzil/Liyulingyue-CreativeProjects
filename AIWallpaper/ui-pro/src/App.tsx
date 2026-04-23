@@ -79,8 +79,8 @@ function App() {
 
     // @ts-ignore
     window.onImageSaved = (path: string) => {
-      setStatusMsg("已保存至: " + path.split(/[\\/]/).pop());
-      setTimeout(() => setStatusMsg(""), 3000);
+      setStatusMsg("✅ 成功存入画廊并应用为壁纸");
+      setTimeout(() => setStatusMsg(""), 5000);
     };
 
     return () => {
