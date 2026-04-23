@@ -44,6 +44,47 @@ pub async fn handle_message(msg_raw: &str, ctx: &IpcContext) {
                 let cfg_path = ctx.app_data_dir.join("config.json");
                 let _ = fs::write(cfg_path, serde_json::to_string(&*cfg).unwrap());
             }
+            "import_image" => {
+                let proxy = ctx.proxy.clone();
+                let app_data_dir = ctx.app_data_dir.clone();
+                let cfg = ctx.config.lock().unwrap().clone();
+                tokio::spawn(async move {
+                    if let Some(path) = rfd::AsyncFileDialog::new()
+                        .add_filter("图片文件", &["png", "jpg", "jpeg", "webp"])
+                        .set_title("选择要导入的壁纸")
+                        .pick_file()
+                        .await 
+                    {
+                        let src_path = path.path();
+                        let export_dir = export_image_dir(&app_data_dir, &cfg);
+                        let _ = fs::create_dir_all(&export_dir);
+
+                        let ts = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_secs();
+                        let ext = src_path.extension().and_then(|e| e.to_str()).unwrap_or("png");
+                        let target_path = export_dir.join(format!("imported-{}.{}", ts, ext));
+                        
+                        match fs::copy(src_path, &target_path) {
+                            Ok(_) => {
+                                // 1. 将导入的图片拷贝到预览缓存，使其立即生效作为当前壁纸
+                                let cache_path = app_data_dir.join("cache").join("current_wallpaper.png");
+                                let _ = fs::copy(&target_path, &cache_path);
+                                
+                                // 2. 通知所有 UI：图片已保存，且壁纸已更新（Generated 事件会触发预览刷新）
+                                let _ = proxy.send_event(AppEvent::Saved(target_path.to_string_lossy().to_string()));
+                                let _ = proxy.send_event(AppEvent::Generated(api::GeneratedImage {
+                                    preview_url: "".to_string(), // 空字符串触发前端刷新
+                                    wallpaper_url: "".to_string(),
+                                    size: "".to_string(),
+                                }));
+                                let _ = proxy.send_event(AppEvent::Ready); 
+                            }
+                            Err(e) => {
+                                let _ = proxy.send_event(AppEvent::Error(format!("导入失败: {}", e)));
+                            }
+                        }
+                    }
+                });
+            }
             "save_image" => {
                 let app_data_dir_for_save = ctx.app_data_dir.clone();
                 let proxy_for_save = ctx.proxy.clone();

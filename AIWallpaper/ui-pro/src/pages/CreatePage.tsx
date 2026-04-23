@@ -19,6 +19,8 @@ const CreatePage: React.FC<CreatePageProps> = ({
   isGenerating, statusMsg, previewUrl, sendIpc, setActiveTab,
   setShowViewer, autoRefreshHours
 }) => {
+  const [isImporting, setIsImporting] = React.useState(false);
+
   return (
     <div className="space-y-10 animate-in fade-in slide-in-from-bottom-6 duration-700">
       <div className="bg-white border border-slate-200 rounded-[2.5rem] p-10 shadow-xl relative overflow-hidden group">
@@ -33,12 +35,37 @@ const CreatePage: React.FC<CreatePageProps> = ({
           className="w-full bg-slate-50 border border-slate-200 rounded-3xl p-6 text-xl min-h-[180px] focus:ring-4 focus:ring-blue-500/10 focus:border-blue-500/50 outline-none transition-all resize-none shadow-inner placeholder:text-slate-300 leading-relaxed text-slate-700"
         />
         <div className="mt-10 flex items-center justify-between">
-          <button onClick={handleRandomPrompt} className="flex items-center gap-2 px-5 py-2.5 rounded-2xl bg-white border border-slate-200 hover:bg-slate-50 text-sm font-semibold transition-all active:scale-95 text-slate-600">
-            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="text-amber-500"><rect width="18" height="18" x="3" y="3" rx="2" ry="2" /><path d="M7 7h.01" /><path d="M17 7h.01" /><path d="M7 17h.01" /><path d="M17 17h.01" /><path d="M12 12h.01" /></svg>
-            灵感骰子
-          </button>
+          <div className="flex items-center gap-4">
+            <button onClick={handleRandomPrompt} className="flex items-center gap-2 px-5 py-2.5 rounded-2xl bg-white border border-slate-200 hover:bg-slate-50 text-sm font-semibold transition-all active:scale-95 text-slate-600">
+              <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="text-amber-500"><rect width="18" height="18" x="3" y="3" rx="2" ry="2" /><path d="M7 7h.01" /><path d="M17 7h.01" /><path d="M7 17h.01" /><path d="M17 17h.01" /><path d="M12 12h.01" /></svg>
+              灵感骰子
+            </button>
+            <button 
+              onClick={() => {
+                setIsImporting(true);
+                sendIpc("import_image");
+                setTimeout(() => setIsImporting(false), 2000);
+              }} 
+              disabled={isImporting}
+              className="flex items-center gap-2 px-5 py-2.5 rounded-2xl bg-white border border-slate-200 hover:bg-slate-50 text-sm font-semibold transition-all active:scale-95 text-slate-600 disabled:opacity-50"
+              title="导入本地图片作为壁纸"
+            >
+              {isImporting ? (
+                 <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="animate-spin text-blue-500"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg>
+              ) : (
+                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="text-blue-500">
+                  <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" x2="12" y1="3" y2="15"/>
+                </svg>
+              )}
+              {isImporting ? "正在开启..." : "导入图片"}
+            </button>
+          </div>
           <div className="flex items-center gap-6">
-            {statusMsg && <span className="text-sm font-medium text-blue-600 animate-pulse">{statusMsg}</span>}
+            {(statusMsg || isImporting) && (
+              <span className="text-sm font-medium text-blue-600 animate-pulse">
+                {isImporting ? "请在弹出的对话框中选择图片..." : statusMsg}
+              </span>
+            )}
             <button
               onClick={handleGenerate}
               disabled={isGenerating || !prompt.trim()}
