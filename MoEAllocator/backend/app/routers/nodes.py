@@ -2,8 +2,8 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 from typing import Optional
 
-from backend.process_manager import manager
-from backend.proxy import proxy
+from app.process_manager import manager
+from app.proxy import proxy
 
 router = APIRouter(prefix="/api/nodes", tags=["nodes"])
 
@@ -12,7 +12,9 @@ class StartMasterRequest(BaseModel):
     node_id: str
     manifest_path: str
     http_port: Optional[int] = None
-    expert_ids: Optional[str] = "0,1,2"
+    expert_ids: Optional[str] = None
+    python_env: Optional[str] = 'venv'
+    custom_python: Optional[str] = None
 
 
 class StartWorkerRequest(BaseModel):
@@ -22,6 +24,8 @@ class StartWorkerRequest(BaseModel):
     experts_dir: Optional[str] = None
     expert_ids: Optional[str] = None
     master_node_id: Optional[str] = None
+    python_env: Optional[str] = 'venv'
+    custom_python: Optional[str] = None
 
 
 class RegisterWorkerRequest(BaseModel):
@@ -29,9 +33,21 @@ class RegisterWorkerRequest(BaseModel):
     master_node_id: str
 
 
+class AddRemoteNodeRequest(BaseModel):
+    node_id: str
+    node_type: str
+    base_url: str
+    tcp_port: Optional[int] = None
+
+
 @router.get("")
 async def list_nodes():
     return manager.list_nodes()
+
+
+@router.get("/detect-python")
+async def detect_python():
+    return manager.get_detected_envs()
 
 
 @router.post("/master")
@@ -42,6 +58,8 @@ async def create_master(req: StartMasterRequest):
             manifest_path=req.manifest_path,
             http_port=req.http_port,
             expert_ids=req.expert_ids,
+            python_env=req.python_env or 'venv',
+            custom_python=req.custom_python,
         )
         return result
     except ValueError as e:
@@ -66,12 +84,29 @@ async def create_worker(req: StartWorkerRequest):
             experts_dir=req.experts_dir,
             expert_ids=req.expert_ids,
             master_url=master_url,
+            python_env=req.python_env or 'venv',
+            custom_python=req.custom_python,
         )
         return result
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
     except HTTPException:
         raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/remote")
+async def add_remote_node(req: AddRemoteNodeRequest):
+    try:
+        return manager.add_remote_node(
+            node_id=req.node_id,
+            node_type=req.node_type,
+            base_url=req.base_url,
+            tcp_port=req.tcp_port,
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 

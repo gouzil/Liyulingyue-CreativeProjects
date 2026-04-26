@@ -3,13 +3,31 @@ import { api } from './api';
 import type { NodeInfo, MasterStatus, NodeStatus } from './types';
 import './App.css';
 
-type Tab = 'nodes' | 'status' | 'experts' | 'inference' | 'logs';
+type Tab = 'dashboard' | 'nodes' | 'experts' | 'inference' | 'logs';
+
+const NAV_ITEMS: { id: Tab; label: string; icon: string }[] = [
+  { id: 'dashboard', label: '概览', icon: '◈' },
+  { id: 'nodes', label: '节点管理', icon: '◇' },
+  { id: 'experts', label: 'Expert 管理', icon: '◉' },
+  { id: 'inference', label: '推理', icon: '▸' },
+  { id: 'logs', label: '日志', icon: '☰' },
+];
 
 function App() {
-  const [tab, setTab] = useState<Tab>('nodes');
+  const [tab, setTab] = useState<Tab>('dashboard');
   const [nodes, setNodes] = useState<NodeInfo[]>([]);
   const [toast, setToast] = useState<{ msg: string; type: string } | null>(null);
   const [loading, setLoading] = useState(false);
+  const [theme, setTheme] = useState<'light' | 'dark'>(() => {
+    const s = localStorage.getItem('moe-theme');
+    if (s) return s as 'light' | 'dark';
+    return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+  });
+
+  useEffect(() => {
+    localStorage.setItem('moe-theme', theme);
+    document.documentElement.style.colorScheme = theme;
+  }, [theme]);
 
   const showToast = useCallback((msg: string, type = 'success') => {
     setToast({ msg, type });
@@ -17,111 +35,291 @@ function App() {
   }, []);
 
   const refreshNodes = useCallback(async () => {
-    try {
-      setNodes(await api.getNodes());
-    } catch (e) {
-      // ignore
-    }
+    try { setNodes(await api.getNodes()); } catch { /* ignore */ }
   }, []);
 
   useEffect(() => {
     refreshNodes();
-    const interval = setInterval(refreshNodes, 5000);
-    return () => clearInterval(interval);
+    const t = setInterval(refreshNodes, 5000);
+    return () => clearInterval(t);
   }, [refreshNodes]);
 
   const masters = nodes.filter(n => n.node_type === 'master' && n.alive);
+  const workers = nodes.filter(n => n.node_type === 'worker' && n.alive);
+  const aliveCount = nodes.filter(n => n.alive).length;
+  const totalCount = nodes.length;
 
   return (
     <div className="app">
-      {toast && (
-        <div className={`toast ${toast.type}`}>{toast.msg}</div>
-      )}
+      {toast && <div className={`toast ${toast.type}`}>{toast.msg}</div>}
 
-      <header className="app-header">
-        <h1>MoEAllocator</h1>
-        <span className="subtitle">分布式 MoE 推理框架</span>
-      </header>
+      {/* Sidebar */}
+      <aside className="sidebar">
+        <div className="sidebar-brand">
+          <svg className="sidebar-logo" viewBox="0 0 26 26" fill="none">
+            <rect width="26" height="26" rx="7" fill="url(#sg)"/>
+            <circle cx="8.5" cy="13" r="2.8" fill="white" opacity="0.9"/>
+            <circle cx="17.5" cy="8.5" r="2.8" fill="white" opacity="0.7"/>
+            <circle cx="17.5" cy="17.5" r="2.8" fill="white" opacity="0.7"/>
+            <line x1="11.3" y1="13" x2="14.7" y2="9.3" stroke="white" strokeWidth="1.4" opacity="0.45"/>
+            <line x1="11.3" y1="13" x2="14.7" y2="16.7" stroke="white" strokeWidth="1.4" opacity="0.45"/>
+            <defs>
+              <linearGradient id="sg" x1="0" y1="0" x2="26" y2="26">
+                <stop stopColor="#3b63f5"/>
+                <stop offset="1" stopColor="#7c3aed"/>
+              </linearGradient>
+            </defs>
+          </svg>
+          <span className="sidebar-title">MoEAllocator</span>
+        </div>
 
-      <nav className="tabs">
-        {(['nodes', 'status', 'experts', 'inference', 'logs'] as Tab[]).map(t => (
-          <button key={t} className={`tab ${tab === t ? 'active' : ''}`} onClick={() => setTab(t)}>
-            {t === 'nodes' ? '节点管理' : t === 'status' ? '状态监控' : t === 'experts' ? 'Expert 管理' : t === 'inference' ? '推理' : '日志'}
+        <nav className="sidebar-nav">
+          <div className="sidebar-section-label">导航</div>
+          {NAV_ITEMS.map(item => (
+            <button
+              key={item.id}
+              className={`nav-item ${tab === item.id ? 'active' : ''}`}
+              onClick={() => setTab(item.id)}
+            >
+              <span className="nav-icon">{item.icon}</span>
+              {item.label}
+            </button>
+          ))}
+        </nav>
+
+        <div className="sidebar-footer">
+          <span className="sidebar-version">v1.0</span>
+          <button className="theme-btn" onClick={() => setTheme(t => t === 'light' ? 'dark' : 'light')}>
+            {theme === 'light' ? '🌙' : '☀️'}
           </button>
-        ))}
-      </nav>
+        </div>
+      </aside>
 
-      <main className="content">
-        {tab === 'nodes' && (
-          <NodesTab nodes={nodes} masters={masters} onRefresh={refreshNodes} showToast={showToast} />
-        )}
-        {tab === 'status' && (
-          <StatusTab nodes={nodes} />
-        )}
-        {tab === 'experts' && (
-          <ExpertsTab masters={masters} showToast={showToast} />
-        )}
-        {tab === 'inference' && (
-          <InferenceTab masters={masters} showToast={showToast} loading={loading} setLoading={setLoading} />
-        )}
-        {tab === 'logs' && (
-          <LogsTab nodes={nodes} />
-        )}
+      {/* Main */}
+      <main className="main">
+        <div className="main-header">
+          <div>
+            <div className="main-title">{NAV_ITEMS.find(n => n.id === tab)?.label}</div>
+            <div className="main-subtitle">
+              {totalCount === 0 ? '尚未启动任何节点' : `${aliveCount} 个节点运行中，共 ${totalCount} 个`}
+            </div>
+          </div>
+        </div>
+
+        <div className="main-body">
+          {tab === 'dashboard' && (
+            <DashboardView nodes={nodes} masters={masters} workers={workers} onRefresh={refreshNodes} showToast={showToast} onNavigate={setTab} />
+          )}
+          {tab === 'nodes' && (
+            <NodesView nodes={nodes} masters={masters} onRefresh={refreshNodes} showToast={showToast} />
+          )}
+          {tab === 'experts' && (
+            <ExpertsView masters={masters} showToast={showToast} />
+          )}
+          {tab === 'inference' && (
+            <InferenceView masters={masters} showToast={showToast} loading={loading} setLoading={setLoading} />
+          )}
+          {tab === 'logs' && (
+            <LogsView nodes={nodes} />
+          )}
+        </div>
       </main>
     </div>
   );
 }
 
-function NodesTab({ nodes, masters, onRefresh, showToast }: {
+/* ── Dashboard ── */
+function DashboardView({ nodes, masters, workers, onRefresh, showToast, onNavigate }: {
+  nodes: NodeInfo[]; masters: NodeInfo[]; workers: NodeInfo[]; onRefresh: () => void; showToast: (m: string, t?: string) => void; onNavigate: (tab: Tab) => void;
+}) {
+  const [masterStatuses, setMasterStatuses] = useState<Record<string, MasterStatus | null>>({});
+
+  useEffect(() => {
+    masters.forEach(m => {
+      api.getNodeStatus(m.node_id)
+        .then(s => setMasterStatuses(prev => ({ ...prev, [m.node_id]: s as MasterStatus })))
+        .catch(() => setMasterStatuses(prev => ({ ...prev, [m.node_id]: null })));
+    });
+  }, [masters, nodes]);
+
+  const totalExperts = masters.reduce((sum, m) => sum + (masterStatuses[m.node_id]?.local_expert_count || 0), 0);
+
+  return (
+    <>
+      <div className="stats-row">
+        <StatCard label="在线节点" value={String(nodes.filter(n => n.alive).length)} sub={`共 ${nodes.length} 个`} />
+        <StatCard label="Masters" value={String(masters.length)} sub="运行中" />
+        <StatCard label="Workers" value={String(workers.length)} sub="运行中" />
+        <StatCard label="已加载 Experts" value={String(totalExperts)} sub={`分布在 ${masters.length} 个 Master`} />
+      </div>
+
+      <div className="card">
+        <div className="section-divider"><h3>快速操作</h3></div>
+        <div className="flex gap-3 mt-3">
+          <button onClick={() => onNavigate('nodes')}>◈ 创建 Master</button>
+          <button className="btn-outline" onClick={() => onNavigate('nodes')}>◇ 创建 Worker</button>
+        </div>
+      </div>
+
+      {nodes.length === 0 ? (
+        <div className="empty-state">
+          <div className="empty-state-icon">◎</div>
+          <div className="empty-state-text">暂无节点。<br/>从「节点管理」创建 Master 和 Worker 开始。</div>
+        </div>
+      ) : (
+        <div className="card">
+          <div className="section-divider"><h3>节点概览</h3></div>
+          <div className="nodes-grid mt-3">
+            {nodes.slice(0, 6).map(n => (
+              <NodeCard key={n.node_id} node={n} onDelete={() => { onRefresh(); showToast(`已删除 ${n.node_id}`); }} />
+            ))}
+          </div>
+        </div>
+      )}
+    </>
+  );
+}
+
+function StatCard({ label, value, sub }: { label: string; value: string; sub: string }) {
+  return (
+    <div className="stat-card">
+      <div className="stat-label">{label}</div>
+      <div className="stat-value">{value}</div>
+      <div className="stat-sub">{sub}</div>
+    </div>
+  );
+}
+
+function NodeCard({ node, onDelete }: { node: NodeInfo; onDelete: () => void }) {
+  const [status, setStatus] = useState<NodeStatus | null>(null);
+
+  useEffect(() => {
+    if (!node.alive) return;
+    api.getNodeStatus(node.node_id).then(setStatus).catch(() => setStatus(null));
+  }, [node]);
+
+  const isMaster = node.node_type === 'master';
+  const expertCount = isMaster && status && 'local_expert_count' in status
+    ? status.local_expert_count
+    : !isMaster && status && 'loaded_count' in status
+    ? status.loaded_count : null;
+  const expertList: string[] = isMaster && status && 'local_experts' in status
+    ? status.local_experts : !isMaster && status && 'loaded_experts' in status
+    ? status.loaded_experts : [];
+
+  return (
+    <div className="node-card">
+      <div className="node-card-top">
+        <span className={`node-card-badge ${node.node_type}`}>
+          {node.is_remote ? '远程' : node.node_type}
+        </span>
+        <div className={`node-card-status ${node.alive ? 'alive' : 'dead'}`} />
+      </div>
+      <div className="node-card-id">{node.node_id}</div>
+      <div className="node-card-meta">
+        <div className="node-card-meta-row">
+          <span className="node-card-meta-key">端口</span>
+          <span>HTTP {node.http_port}{node.tcp_port ? ` / TCP ${node.tcp_port}` : ''}</span>
+        </div>
+        {node.pid && (
+          <div className="node-card-meta-row">
+            <span className="node-card-meta-key">PID</span>
+            <span>{node.pid}</span>
+          </div>
+        )}
+        {expertCount !== null && (
+          <div className="node-card-meta-row">
+            <span className="node-card-meta-key">Experts</span>
+            <span>{expertCount} 个</span>
+          </div>
+        )}
+        {isMaster && status && 'workers' in status && (
+          <div className="node-card-meta-row">
+            <span className="node-card-meta-key">Workers</span>
+            <span>{status.workers} 个</span>
+          </div>
+        )}
+      </div>
+      {expertList.length > 0 && (
+        <div className="node-card-experts">
+          {expertList.slice(0, 8).map((e, i) => (
+            <span key={i} className="expert-chip">{e}</span>
+          ))}
+          {expertList.length > 8 && (
+            <span className="expert-chip">+{expertList.length - 8}</span>
+          )}
+        </div>
+      )}
+      <div className="node-card-actions">
+        <button className="btn-sm btn-danger" onClick={onDelete}>删除</button>
+      </div>
+    </div>
+  );
+}
+
+/* ── Nodes ── */
+function NodesView({ nodes, masters, onRefresh, showToast }: {
   nodes: NodeInfo[]; masters: NodeInfo[]; onRefresh: () => void; showToast: (m: string, t?: string) => void;
 }) {
-  const [deleting, setDeleting] = useState<string | null>(null);
-
   const deleteNode = async (nodeId: string) => {
     if (!confirm(`确认删除节点 ${nodeId}？`)) return;
-    setDeleting(nodeId);
     try {
       await api.deleteNode(nodeId);
       showToast(`节点 ${nodeId} 已删除`);
       onRefresh();
     } catch (e: unknown) {
       showToast((e as Error).message, 'error');
-    } finally {
-      setDeleting(null);
     }
   };
 
   return (
-    <div className="tab-content">
+    <>
       <div className="card-grid">
         <div className="card">
-          <h2>创建 Master</h2>
+          <div className="page-header">
+            <div>
+              <div className="page-title">创建 Master</div>
+              <div className="page-desc">启动一个 Master 节点，管理 Experts 和 Workers</div>
+            </div>
+          </div>
           <MasterForm onDone={() => { onRefresh(); showToast('Master 已启动'); }} showToast={showToast} />
         </div>
         <div className="card">
-          <h2>创建 Worker</h2>
+          <div className="page-header">
+            <div>
+              <div className="page-title">创建 Worker</div>
+              <div className="page-desc">启动一个 Worker 节点，托管部分 Experts</div>
+            </div>
+          </div>
           <WorkerForm masters={masters} onDone={() => { onRefresh(); showToast('Worker 已启动'); }} showToast={showToast} />
+        </div>
+        <div className="card">
+          <div className="page-header">
+            <div>
+              <div className="page-title">添加远程节点</div>
+              <div className="page-desc">注册已运行的远程 Master 或 Worker</div>
+            </div>
+          </div>
+          <RemoteNodeForm onDone={() => { onRefresh(); showToast('节点已添加'); }} showToast={showToast} />
         </div>
       </div>
 
       <div className="card">
-        <h2>节点列表</h2>
-        <div className="nodes-list">
-          {nodes.length === 0 && <p className="empty">暂无节点</p>}
-          {nodes.map(n => (
-            <div key={n.node_id} className="node-row">
-              <div className={`dot ${n.alive ? 'alive' : 'dead'}`} />
-              <span className={`badge ${n.node_type}`}>{n.node_type.toUpperCase()}</span>
-              <span className="node-id">{n.node_id}</span>
-              <span className="node-info">HTTP:{n.http_port} {n.tcp_port ? `TCP:${n.tcp_port}` : ''} PID:{n.pid}</span>
-              <button className="btn-danger btn-sm" onClick={() => deleteNode(n.node_id)} disabled={deleting === n.node_id}>
-                {deleting === n.node_id ? '删除中...' : '删除'}
-              </button>
-            </div>
-          ))}
-        </div>
+        <div className="section-divider"><h3>所有节点 ({nodes.length})</h3></div>
+        {nodes.length === 0 ? (
+          <div className="empty-state">
+            <div className="empty-state-icon">◎</div>
+            <div className="empty-state-text">暂无节点</div>
+          </div>
+        ) : (
+          <div className="nodes-grid mt-3">
+            {nodes.map(n => (
+              <NodeCard key={n.node_id} node={n} onDelete={() => deleteNode(n.node_id)} />
+            ))}
+          </div>
+        )}
       </div>
-    </div>
+    </>
   );
 }
 
@@ -129,14 +327,22 @@ function MasterForm({ onDone, showToast }: {
   onDone: () => void; showToast: (m: string, t?: string) => void;
 }) {
   const [nodeId, setNodeId] = useState('master-1');
-  const [manifest, setManifest] = useState('output/splits/ERNIE-4.5-21B-A3B-PT-k6/manifest.json');
+  const [manifest, setManifest] = useState('output/splits/ERNIE-4.5-21B-A3B-PT-full/manifest.json');
   const [port, setPort] = useState('');
-  const [experts, setExperts] = useState('0,1,2');
+  const [experts, setExperts] = useState('');
+  const [pythonEnv, setPythonEnv] = useState('venv');
+  const [customPython, setCustomPython] = useState('');
+  const [pythonEnvs, setPythonEnvs] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    api.detectPythonEnvs().then(setPythonEnvs).catch(() => {});
+  }, []);
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!nodeId || !manifest) return showToast('请填写节点ID和Manifest路径', 'error');
+    if (pythonEnv === 'custom' && !customPython) return showToast('请填写自定义 Python 路径', 'error');
     setLoading(true);
     try {
       await api.createMaster({
@@ -144,6 +350,8 @@ function MasterForm({ onDone, showToast }: {
         manifest_path: manifest,
         http_port: port ? parseInt(port) : undefined,
         expert_ids: experts ? experts.split(',').map(Number) : undefined,
+        python_env: pythonEnv,
+        custom_python: pythonEnv === 'custom' ? customPython : undefined,
       });
       onDone();
     } catch (err: unknown) {
@@ -154,26 +362,42 @@ function MasterForm({ onDone, showToast }: {
   };
 
   return (
-    <form onSubmit={submit} className="form-grid">
+    <form onSubmit={submit} className="form-grid mt-3">
       <div className="form-group">
-        <label>节点 ID</label>
-        <input value={nodeId} onChange={e => setNodeId(e.target.value)} />
+        <label className="form-label">节点 ID</label>
+        <input value={nodeId} onChange={e => setNodeId(e.target.value)} placeholder="master-1" />
       </div>
       <div className="form-group">
-        <label>Manifest 路径</label>
+        <label className="form-label">Manifest 路径</label>
         <input value={manifest} onChange={e => setManifest(e.target.value)} />
       </div>
       <div className="form-group">
-        <label>HTTP 端口（留空自动分配）</label>
-        <input type="number" value={port} onChange={e => setPort(e.target.value)} />
+        <label className="form-label">HTTP 端口</label>
+        <input type="number" value={port} onChange={e => setPort(e.target.value)} placeholder="留空自动分配" />
       </div>
       <div className="form-group">
-        <label>Expert IDs（逗号分隔）</label>
-        <input value={experts} onChange={e => setExperts(e.target.value)} />
+        <label className="form-label">Expert IDs</label>
+        <input value={experts} onChange={e => setExperts(e.target.value)} placeholder="留空加载全部" />
       </div>
-      <button type="submit" className="btn-primary" disabled={loading} style={{ gridColumn: '1/-1' }}>
-        {loading ? '启动中...' : '启动 Master'}
-      </button>
+      <div className="form-group">
+        <label className="form-label">Python 环境</label>
+        <select value={pythonEnv} onChange={e => setPythonEnv(e.target.value)}>
+          {pythonEnvs['venv'] && <option value="venv">.venv ({pythonEnvs['venv']})</option>}
+          {pythonEnvs['system'] && <option value="system">系统 ({pythonEnvs['system']})</option>}
+          <option value="custom">自定义路径</option>
+        </select>
+      </div>
+      {pythonEnv === 'custom' && (
+        <div className="form-group">
+          <label className="form-label">自定义 Python 路径</label>
+          <input value={customPython} onChange={e => setCustomPython(e.target.value)} placeholder="/usr/bin/python3" />
+        </div>
+      )}
+      <div className="form-col-span-2">
+        <button type="submit" disabled={loading} style={{ width: '100%', justifyContent: 'center' }}>
+          {loading ? '启动中...' : '◈ 启动 Master'}
+        </button>
+      </div>
     </form>
   );
 }
@@ -182,9 +406,12 @@ function WorkerForm({ masters, onDone, showToast }: {
   masters: NodeInfo[]; onDone: () => void; showToast: (m: string, t?: string) => void;
 }) {
   const [nodeId, setNodeId] = useState('worker-1');
-  const [expertsDir, setExpertsDir] = useState('output/splits/ERNIE-4.5-21B-A3B-PT-k6');
-  const [expertIds, setExpertIds] = useState('3,4,5');
+  const [expertsDir, setExpertsDir] = useState('output/splits/ERNIE-4.5-21B-A3B-PT-full');
+  const [expertIds, setExpertIds] = useState('');
   const [masterId, setMasterId] = useState(masters[0]?.node_id || '');
+  const [pythonEnv, setPythonEnv] = useState('venv');
+  const [customPython, setCustomPython] = useState('');
+  const [pythonEnvs, setPythonEnvs] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
@@ -193,9 +420,14 @@ function WorkerForm({ masters, onDone, showToast }: {
     }
   }, [masters, masterId]);
 
+  useEffect(() => {
+    api.detectPythonEnvs().then(setPythonEnvs).catch(() => {});
+  }, []);
+
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!nodeId) return showToast('请填写节点ID', 'error');
+    if (pythonEnv === 'custom' && !customPython) return showToast('请填写自定义 Python 路径', 'error');
     setLoading(true);
     try {
       const master = masters.find(m => m.node_id === masterId);
@@ -205,6 +437,8 @@ function WorkerForm({ masters, onDone, showToast }: {
         expert_ids: expertIds ? expertIds.split(',').map(Number) : undefined,
         master_id: master ? masterId : undefined,
         master_url: master ? `http://localhost:${master.http_port}` : undefined,
+        python_env: pythonEnv,
+        custom_python: pythonEnv === 'custom' ? customPython : undefined,
       });
       onDone();
     } catch (err: unknown) {
@@ -215,21 +449,21 @@ function WorkerForm({ masters, onDone, showToast }: {
   };
 
   return (
-    <form onSubmit={submit} className="form-grid">
+    <form onSubmit={submit} className="form-grid mt-3">
       <div className="form-group">
-        <label>节点 ID</label>
-        <input value={nodeId} onChange={e => setNodeId(e.target.value)} />
+        <label className="form-label">节点 ID</label>
+        <input value={nodeId} onChange={e => setNodeId(e.target.value)} placeholder="worker-1" />
       </div>
       <div className="form-group">
-        <label>Experts 目录</label>
+        <label className="form-label">Experts 目录</label>
         <input value={expertsDir} onChange={e => setExpertsDir(e.target.value)} />
       </div>
       <div className="form-group">
-        <label>Expert IDs（逗号分隔）</label>
-        <input value={expertIds} onChange={e => setExpertIds(e.target.value)} />
+        <label className="form-label">Expert IDs</label>
+        <input value={expertIds} onChange={e => setExpertIds(e.target.value)} placeholder="留空加载全部" />
       </div>
       <div className="form-group">
-        <label>注册到 Master</label>
+        <label className="form-label">注册到 Master</label>
         <select value={masterId} onChange={e => setMasterId(e.target.value)}>
           <option value="">-- 不注册 --</option>
           {masters.map(m => (
@@ -237,102 +471,94 @@ function WorkerForm({ masters, onDone, showToast }: {
           ))}
         </select>
       </div>
-      <button type="submit" className="btn-primary" disabled={loading} style={{ gridColumn: '1/-1' }}>
-        {loading ? '启动中...' : '启动 Worker'}
-      </button>
+      <div className="form-group">
+        <label className="form-label">Python 环境</label>
+        <select value={pythonEnv} onChange={e => setPythonEnv(e.target.value)}>
+          {pythonEnvs['venv'] && <option value="venv">.venv ({pythonEnvs['venv']})</option>}
+          {pythonEnvs['system'] && <option value="system">系统 ({pythonEnvs['system']})</option>}
+          <option value="custom">自定义路径</option>
+        </select>
+      </div>
+      {pythonEnv === 'custom' && (
+        <div className="form-group">
+          <label className="form-label">自定义 Python 路径</label>
+          <input value={customPython} onChange={e => setCustomPython(e.target.value)} placeholder="/usr/bin/python3" />
+        </div>
+      )}
+      <div className="form-col-span-2">
+        <button type="submit" disabled={loading} className="btn-outline" style={{ width: '100%', justifyContent: 'center' }}>
+          {loading ? '启动中...' : '◇ 启动 Worker'}
+        </button>
+      </div>
     </form>
   );
 }
 
-function StatusTab({ nodes }: { nodes: NodeInfo[] }) {
-  const [selected, setSelected] = useState(nodes.find(n => n.alive)?.node_id || '');
-  const [status, setStatus] = useState<NodeStatus | null>(null);
+function RemoteNodeForm({ onDone, showToast }: {
+  onDone: () => void; showToast: (m: string, t?: string) => void;
+}) {
+  const [nodeId, setNodeId] = useState('');
+  const [nodeType, setNodeType] = useState('master');
+  const [baseUrl, setBaseUrl] = useState('');
+  const [tcpPort, setTcpPort] = useState('');
+  const [loading, setLoading] = useState(false);
 
-  useEffect(() => {
-    if (!selected) return;
-    api.getNodeStatus(selected).then(setStatus).catch(() => setStatus(null));
-  }, [selected]);
-
-  useEffect(() => {
-    if (nodes.find(n => n.node_id === selected && n.alive)) {
-      api.getNodeStatus(selected).then(setStatus).catch(() => setStatus(null));
+  const submit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!nodeId || !baseUrl) return showToast('请填写节点ID和服务地址', 'error');
+    setLoading(true);
+    try {
+      await api.addRemoteNode({
+        node_id: nodeId,
+        node_type: nodeType,
+        base_url: baseUrl,
+        tcp_port: tcpPort ? parseInt(tcpPort) : undefined,
+      });
+      setNodeId('');
+      setBaseUrl('');
+      setTcpPort('');
+      onDone();
+    } catch (err: unknown) {
+      showToast((err as Error).message, 'error');
+    } finally {
+      setLoading(false);
     }
-  }, [nodes, selected]);
-
-  const selectedNode = nodes.find(n => n.node_id === selected);
-  const isMaster = status && 'local_expert_count' in status;
+  };
 
   return (
-    <div className="tab-content">
-      <div className="card">
-        <h2>节点状态</h2>
-        <div className="form-group" style={{ marginBottom: 16 }}>
-          <select value={selected} onChange={e => setSelected(e.target.value)}>
-            <option value="">-- 选择节点 --</option>
-            {nodes.filter(n => n.alive).map(n => (
-              <option key={n.node_id} value={n.node_id}>{n.node_id} ({n.node_type}, HTTP {n.http_port})</option>
-            ))}
-          </select>
-        </div>
-
-        {selectedNode && status && (
-          <div className="status-grid">
-            <div className="status-item">
-              <span className="status-label">类型</span>
-              <span className="status-value">{isMaster ? 'MASTER' : 'WORKER'}</span>
-            </div>
-            <div className="status-item">
-              <span className="status-label">状态</span>
-              <span className={`status-value ${selectedNode.alive ? 'good' : 'bad'}`}>
-                {selectedNode.alive ? '运行中' : '已停止'}
-              </span>
-            </div>
-            <div className="status-item">
-              <span className="status-label">HTTP 端口</span>
-              <span className="status-value">{selectedNode.http_port}</span>
-            </div>
-            {selectedNode.tcp_port && (
-              <div className="status-item">
-                <span className="status-label">TCP 端口</span>
-                <span className="status-value">{selectedNode.tcp_port}</span>
-              </div>
-            )}
-            <div className="status-item">
-              <span className="status-label">本地 Experts</span>
-              <span className="status-value">{isMaster ? (status as MasterStatus).local_expert_count : (status as { loaded_count: number }).loaded_count}</span>
-            </div>
-            {isMaster && (
-              <div className="status-item">
-                <span className="status-label">Workers</span>
-                <span className="status-value">{(status as MasterStatus).workers}</span>
-              </div>
-            )}
-          </div>
-        )}
-
-        {selectedNode && status && (
-          <div style={{ marginTop: 16 }}>
-            <div style={{ fontSize: 12, color: '#9ca3af', marginBottom: 8 }}>
-              Experts 列表
-            </div>
-            <div className="experts-list">
-              {isMaster
-                ? (status as MasterStatus).local_experts.map((e: string, i: number) => (
-                  <span key={i} className="expert-chip">{e}</span>
-                ))
-                : (status as { loaded_experts: string[] }).loaded_experts.map((e: string, i: number) => (
-                  <span key={i} className="expert-chip">{e}</span>
-                ))
-              }
-            </div>
-          </div>
-        )}
+    <form onSubmit={submit} className="form-grid mt-3">
+      <div className="form-group">
+        <label className="form-label">节点 ID</label>
+        <input value={nodeId} onChange={e => setNodeId(e.target.value)} placeholder="remote-master-1" />
       </div>
-    </div>
+      <div className="form-group">
+        <label className="form-label">节点类型</label>
+        <select value={nodeType} onChange={e => setNodeType(e.target.value)}>
+          <option value="master">Master</option>
+          <option value="worker">Worker</option>
+        </select>
+      </div>
+      <div className="form-group form-col-span-2">
+        <label className="form-label">服务地址（Base URL）</label>
+        <input value={baseUrl} onChange={e => setBaseUrl(e.target.value)} placeholder="http://192.168.1.100:5000" />
+      </div>
+      <div className="form-group">
+        <label className="form-label">TCP 端口（可选）</label>
+        <input type="number" value={tcpPort} onChange={e => setTcpPort(e.target.value)} placeholder="留空自动检测" />
+      </div>
+      <div className="form-col-span-2">
+        <button type="submit" disabled={loading} className="btn-outline" style={{ width: '100%', justifyContent: 'center' }}>
+          {loading ? '添加中...' : '+ 添加远程节点'}
+        </button>
+      </div>
+    </form>
   );
 }
 
-function ExpertsTab({ masters, showToast }: { masters: NodeInfo[]; showToast: (m: string, t?: string) => void }) {
+/* ── Experts ── */
+function ExpertsView({ masters, showToast }: {
+  masters: NodeInfo[]; showToast: (m: string, t?: string) => void;
+}) {
   const [selected, setSelected] = useState(masters[0]?.node_id || '');
   const [expertId, setExpertId] = useState('');
   const [layerId, setLayerId] = useState('');
@@ -357,8 +583,8 @@ function ExpertsTab({ masters, showToast }: { masters: NodeInfo[]; showToast: (m
 
   useEffect(() => {
     refreshExperts();
-    const interval = setInterval(refreshExperts, 3000);
-    return () => clearInterval(interval);
+    const t = setInterval(refreshExperts, 3000);
+    return () => clearInterval(t);
   }, [refreshExperts]);
 
   const loadExpert = async () => {
@@ -392,50 +618,52 @@ function ExpertsTab({ masters, showToast }: { masters: NodeInfo[]; showToast: (m
   };
 
   return (
-    <div className="tab-content">
-      <div className="card">
-        <h2>运行时加载 / 卸载 Expert</h2>
-        <div className="form-grid" style={{ marginBottom: 16 }}>
-          <div className="form-group">
-            <label>选择 Master 节点</label>
-            <select value={selected} onChange={e => setSelected(e.target.value)}>
-              <option value="">-- 选择 Master --</option>
-              {masters.map(m => (
-                <option key={m.node_id} value={m.node_id}>{m.node_id} (HTTP {m.http_port})</option>
-              ))}
-            </select>
-          </div>
-          <div className="form-group">
-            <label>Expert ID (0-63)</label>
-            <input type="number" value={expertId} onChange={e => setExpertId(e.target.value)} placeholder="如: 6" min="0" max="63" />
-          </div>
-          <div className="form-group">
-            <label>Layer ID (1-27)</label>
-            <input type="number" value={layerId} onChange={e => setLayerId(e.target.value)} placeholder="如: 1" min="1" max="27" />
-          </div>
+    <div className="card">
+      <div className="page-header">
+        <div>
+          <div className="page-title">运行时 Expert 管理</div>
+          <div className="page-desc">在 Master 节点运行时动态加载或卸载 Expert，无需重启</div>
         </div>
-        <div style={{ display: 'flex', gap: 12 }}>
-          <button className="btn-primary" onClick={loadExpert} disabled={loading}>加载 Expert</button>
-          <button className="btn-danger" onClick={unloadExpert} disabled={loading}>卸载 Expert</button>
-        </div>
+      </div>
 
-        <div style={{ marginTop: 20 }}>
-          <div style={{ fontSize: 12, color: '#9ca3af', marginBottom: 8 }}>
-            当前已加载的 Experts（{experts.length} 个）
-          </div>
-          <div className="experts-list">
-            {experts.length === 0 && <span style={{ color: '#6b7280' }}>当前无本地 experts</span>}
-            {experts.map((e, i) => (
-              <span key={i} className="expert-chip">{e}</span>
+      <div className="form-grid mt-3">
+        <div className="form-group">
+          <label className="form-label">选择 Master</label>
+          <select value={selected} onChange={e => setSelected(e.target.value)}>
+            <option value="">-- 选择 Master --</option>
+            {masters.map(m => (
+              <option key={m.node_id} value={m.node_id}>{m.node_id} (HTTP {m.http_port})</option>
             ))}
-          </div>
+          </select>
         </div>
+        <div className="form-group">
+          <label className="form-label">Expert ID (0-63)</label>
+          <input type="number" value={expertId} onChange={e => setExpertId(e.target.value)} placeholder="如: 6" min="0" max="63" />
+        </div>
+        <div className="form-group">
+          <label className="form-label">Layer ID (1-27)</label>
+          <input type="number" value={layerId} onChange={e => setLayerId(e.target.value)} placeholder="如: 1" min="1" max="27" />
+        </div>
+      </div>
+
+      <div className="expert-actions mt-3">
+        <button onClick={loadExpert} disabled={loading}>◉ 加载 Expert</button>
+        <button onClick={unloadExpert} disabled={loading} className="btn-danger">◉ 卸载 Expert</button>
+      </div>
+
+      <div className="section-divider mt-3"><h3>当前已加载 ({experts.length})</h3></div>
+      <div className="experts-display">
+        {experts.length === 0 && <div className="empty-state" style={{ padding: '20px 0' }}><div className="empty-state-text">无本地 Experts</div></div>}
+        {experts.map((e, i) => (
+          <span key={i} className="expert-chip">{e}</span>
+        ))}
       </div>
     </div>
   );
 }
 
-function InferenceTab({ masters, showToast, loading, setLoading }: {
+/* ── Inference ── */
+function InferenceView({ masters, showToast, loading, setLoading }: {
   masters: NodeInfo[]; showToast: (m: string, t?: string) => void; loading: boolean; setLoading: (v: boolean) => void;
 }) {
   const [masterId, setMasterId] = useState(masters[0]?.node_id || '');
@@ -474,49 +702,55 @@ function InferenceTab({ masters, showToast, loading, setLoading }: {
   };
 
   return (
-    <div className="tab-content">
-      <div className="card">
-        <h2>推理</h2>
-        <div className="form-grid" style={{ marginBottom: 12 }}>
-          <div className="form-group">
-            <label>选择 Master</label>
-            <select value={masterId} onChange={e => setMasterId(e.target.value)}>
-              <option value="">-- 选择 Master --</option>
-              {masters.map(m => (
-                <option key={m.node_id} value={m.node_id}>{m.node_id} (HTTP {m.http_port})</option>
-              ))}
-            </select>
-          </div>
-          <div className="form-group">
-            <label>Max Tokens</label>
-            <input type="number" value={maxTokens} onChange={e => setMaxTokens(e.target.value)} min="1" max="1024" />
-          </div>
+    <div className="card">
+      <div className="page-header">
+        <div>
+          <div className="page-title">分布式推理</div>
+          <div className="page-desc">通过 Master 节点执行 MoE 模型推理</div>
         </div>
-        <textarea
-          className="prompt-area"
-          value={prompt}
-          onChange={e => setPrompt(e.target.value)}
-          placeholder="输入 prompt..."
-        />
-        <button className="btn-primary" onClick={run} disabled={loading} style={{ marginTop: 12 }}>
-          {loading ? '推理中...' : '推理'}
-        </button>
-
-        {result && (
-          <>
-            <div className="result-box">{result}</div>
-            <div className="meta-row">
-              <span>Input tokens: {inputTokens}</span>
-              <span>Output tokens: {outputTokens}</span>
-            </div>
-          </>
-        )}
       </div>
+
+      <div className="form-grid mt-3">
+        <div className="form-group">
+          <label className="form-label">选择 Master</label>
+          <select value={masterId} onChange={e => setMasterId(e.target.value)}>
+            <option value="">-- 选择 Master --</option>
+            {masters.map(m => (
+              <option key={m.node_id} value={m.node_id}>{m.node_id} (HTTP {m.http_port})</option>
+            ))}
+          </select>
+        </div>
+        <div className="form-group">
+          <label className="form-label">Max Tokens</label>
+          <input type="number" value={maxTokens} onChange={e => setMaxTokens(e.target.value)} min="1" max="1024" />
+        </div>
+      </div>
+
+      <div className="form-group mt-3">
+        <label className="form-label">Prompt</label>
+        <textarea className="prompt-area" value={prompt} onChange={e => setPrompt(e.target.value)} placeholder="输入 prompt..." />
+      </div>
+
+      <button onClick={run} disabled={loading} style={{ marginTop: 14 }}>
+        {loading ? '推理中...' : '▸ 开始推理'}
+      </button>
+
+      {result && (
+        <>
+          <div className="section-divider mt-3"><h3>输出</h3></div>
+          <div className="result-box">{result}</div>
+          <div className="meta-row">
+            <span>Input tokens: {inputTokens}</span>
+            <span>Output tokens: {outputTokens}</span>
+          </div>
+        </>
+      )}
     </div>
   );
 }
 
-function LogsTab({ nodes }: { nodes: NodeInfo[] }) {
+/* ── Logs ── */
+function LogsView({ nodes }: { nodes: NodeInfo[] }) {
   const [selected, setSelected] = useState('');
   const [content, setContent] = useState('');
   const [loading, setLoading] = useState(false);
@@ -526,25 +760,28 @@ function LogsTab({ nodes }: { nodes: NodeInfo[] }) {
     setLoading(true);
     api.getNodeLogs(selected)
       .then(res => setContent(res.content || '(无可用日志)'))
-      .catch(err => setContent('日志加载失败: ' + err.message))
+      .catch(err => setContent('加载失败: ' + err.message))
       .finally(() => setLoading(false));
   }, [selected]);
 
   return (
-    <div className="tab-content">
-      <div className="card">
-        <h2>节点日志</h2>
-        <div className="form-group" style={{ marginBottom: 16 }}>
-          <select value={selected} onChange={e => setSelected(e.target.value)}>
-            <option value="">-- 选择节点 --</option>
-            {nodes.map(n => (
-              <option key={n.node_id} value={n.node_id}>{n.node_id} ({n.node_type}, HTTP {n.http_port})</option>
-            ))}
-          </select>
+    <div className="card">
+      <div className="page-header">
+        <div>
+          <div className="page-title">节点日志</div>
+          <div className="page-desc">查看各节点的实时运行日志</div>
         </div>
-        <div className="log-area">
-          {loading ? '加载中...' : content}
-        </div>
+      </div>
+      <div className="form-group mt-3">
+        <select value={selected} onChange={e => setSelected(e.target.value)}>
+          <option value="">-- 选择节点 --</option>
+          {nodes.map(n => (
+            <option key={n.node_id} value={n.node_id}>{n.node_id} ({n.node_type}, HTTP {n.http_port})</option>
+          ))}
+        </select>
+      </div>
+      <div className="log-area mt-3">
+        {loading ? '加载中...' : content}
       </div>
     </div>
   );

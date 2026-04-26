@@ -6,6 +6,7 @@
 python -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
+pip install -r backend/requirements.txt
 ```
 
 ## 1. Inquisitor（扫描模型）
@@ -155,16 +156,25 @@ curl -X POST http://localhost:5000/inference \
 
 ## 5. Web UI（可选）
 
-启动后端 API 服务：
+### 启动后端 API
 
 ```bash
-.venv/bin/python -m uvicorn backend.main:app --host 0.0.0.0 --port 8000
+.venv/bin/python backend/run.py
 ```
 
-启动 React 前端：
+### 启动前端开发服务器
 
 ```bash
 cd frontend && npm run dev
 ```
 
-访问 http://localhost:5173，可视化管理 Master/Worker 节点、动态加载/卸载 Experts、查看状态、执行推理。
+访问 http://localhost:5173，获得完整的开发体验（含热更新）。
+
+### 构建生产版本
+
+```bash
+cd frontend && npm run build
+# 构建输出至 frontend/dist/
+```
+
+## 6. 项目结构

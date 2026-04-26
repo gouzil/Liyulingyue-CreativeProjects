@@ -8,6 +8,8 @@ import type {
   LoadExpertRequest,
   LoadExpertResponse,
   LogResponse,
+  AddRemoteNodeRequest,
+  DetectedPythonEnvs,
 } from './types';
 
 const BASE = '/api';
@@ -31,7 +33,9 @@ export const api = {
   getNodeLogs: (nodeId: string) => request<LogResponse>('GET', `/nodes/${nodeId}/logs`),
   createMaster: (req: CreateMasterRequest) => request<NodeInfo>('POST', '/nodes/master', req),
   createWorker: (req: CreateWorkerRequest) => request<NodeInfo>('POST', '/nodes/worker', req),
+  addRemoteNode: (req: AddRemoteNodeRequest) => request<NodeInfo>('POST', '/nodes/remote', req),
   deleteNode: (nodeId: string) => request<void>('DELETE', `/nodes/${nodeId}`),
+  detectPythonEnvs: () => request<DetectedPythonEnvs>('GET', '/nodes/detect-python'),
   inference: (req: InferenceRequest) => request<InferenceResponse>('POST', '/inference', req),
   loadExpert: (req: LoadExpertRequest) => request<LoadExpertResponse>('POST', '/nodes/master/load_expert', req),
   unloadExpert: (req: LoadExpertRequest) => request<void>('POST', '/nodes/master/unload_expert', req),

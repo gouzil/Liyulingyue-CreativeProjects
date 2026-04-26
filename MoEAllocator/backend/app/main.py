@@ -1,12 +1,7 @@
-import sys
-from pathlib import Path
-
-sys.path.insert(0, str(Path(__file__).parent.parent))
-
 from fastapi import FastAPI
 
-from backend.routers.nodes import router as nodes_router
-from backend.routers.inference import router as inference_router
+from app.routers.nodes import router as nodes_router
+from app.routers.inference import router as inference_router
 
 app = FastAPI(
     title="MoEAllocator API",
