@@ -2,8 +2,8 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 from typing import Optional
 
-from backend.process_manager import manager
-from backend.proxy import proxy
+from app.process_manager import manager
+from app.proxy import proxy
 
 router = APIRouter(prefix="/api/inference", tags=["inference"])
 

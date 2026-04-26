@@ -1,15 +1,29 @@
 # MoEAllocator 后端
 
-FastAPI 后端服务，为 MoEAllocator Core 提供进程管理、HTTP 转发和 REST API。
+FastAPI 后端服务，提供进程管理、HTTP 转发和 REST API。
 
 ## 启动
 
 ```bash
-cd MoEAllocator
-.venv/bin/python -m uvicorn backend.main:app --host 0.0.0.0 --port 8000
+pip install -r backend/requirements.txt
+.venv/bin/python backend/run.py
 ```
 
 API 文档: http://localhost:8000/docs
+
+## 目录结构
+
+```
+backend/
+├── run.py                   # 启动入口
+└── app/
+    ├── main.py              # FastAPI app 定义
+    ├── process_manager.py  # 进程生命周期管理
+    ├── proxy.py             # HTTP 转发到 Core
+    └── routers/
+        ├── nodes.py         # 节点管理 API
+        └── inference.py      # 推理 API
+```
 
 ## API 接口
 
@@ -52,15 +66,10 @@ Core: Master + Worker — 真正推理
 
 ## 前端
 
-React 前端位于 `frontend/` 目录。启动开发服务器：
+React 前端位于 `frontend/` 目录：
 
 ```bash
 cd frontend && npm run dev
 ```
 
-前端功能：
-- **节点管理**：创建/删除 Master 和 Worker 节点
-- **Expert 管理**：在 Master 运行时动态加载/卸载 Experts
-- **状态监控**：查看节点实时状态和已加载的 Experts 列表
-- **推理**：输入 prompt 执行分布式推理
-- **日志**：查看节点运行日志
+前端功能：节点管理、Expert 管理、状态监控、推理、日志查看。

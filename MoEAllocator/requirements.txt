@@ -5,7 +5,3 @@ numpy
 transformers
 accelerate
 aiohttp
-fastapi
-uvicorn
-httpx
-
