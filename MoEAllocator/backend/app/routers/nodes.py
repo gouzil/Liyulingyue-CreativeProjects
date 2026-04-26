@@ -1,6 +1,7 @@
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
-from typing import Optional
+from typing import Optional, Union
+from urllib.parse import urlparse
 
 from app.process_manager import manager
 from app.proxy import proxy
@@ -8,11 +9,39 @@ from app.proxy import proxy
 router = APIRouter(prefix="/api/nodes", tags=["nodes"])
 
 
+ExpertIds = Optional[Union[str, list[int]]]
+
+
+def _format_expert_ids(value: ExpertIds) -> Optional[str]:
+    if value is None or value == "":
+        return None
+    if isinstance(value, str):
+        return value
+    return ",".join(str(int(v)) for v in value)
+
+
+def _raise_proxy_error(status_code: int, data):
+    if isinstance(data, str):
+        detail = data
+    elif isinstance(data, dict):
+        detail = data.get("error") or data.get("detail") or "Unknown error"
+    else:
+        detail = "Unknown error"
+    raise HTTPException(status_code=status_code, detail=detail)
+
+
+def _node_host(node_id: str) -> str:
+    url = manager.get_node_url(node_id)
+    if not url:
+        return "127.0.0.1"
+    return urlparse(url).hostname or "127.0.0.1"
+
+
 class StartMasterRequest(BaseModel):
     node_id: str
     manifest_path: str
     http_port: Optional[int] = None
-    expert_ids: Optional[str] = None
+    expert_ids: ExpertIds = None
     python_env: Optional[str] = 'venv'
     custom_python: Optional[str] = None
 
@@ -22,8 +51,9 @@ class StartWorkerRequest(BaseModel):
     http_port: Optional[int] = None
     tcp_port: Optional[int] = None
     experts_dir: Optional[str] = None
-    expert_ids: Optional[str] = None
+    expert_ids: ExpertIds = None
     master_node_id: Optional[str] = None
+    master_id: Optional[str] = None
     python_env: Optional[str] = 'venv'
     custom_python: Optional[str] = None
 
@@ -57,7 +87,7 @@ async def create_master(req: StartMasterRequest):
             node_id=req.node_id,
             manifest_path=req.manifest_path,
             http_port=req.http_port,
-            expert_ids=req.expert_ids,
+            expert_ids=_format_expert_ids(req.expert_ids),
             python_env=req.python_env or 'venv',
             custom_python=req.custom_python,
         )
@@ -72,17 +102,18 @@ async def create_master(req: StartMasterRequest):
 async def create_worker(req: StartWorkerRequest):
     try:
         master_url = None
-        if req.master_node_id:
-            master_url = manager.get_master_url(req.master_node_id)
+        master_node_id = req.master_node_id or req.master_id
+        if master_node_id:
+            master_url = manager.get_master_url(master_node_id)
             if not master_url:
-                raise HTTPException(status_code=400, detail=f"Master '{req.master_node_id}' not found")
+                raise HTTPException(status_code=400, detail=f"Master '{master_node_id}' not found")
 
         result = manager.start_worker(
             node_id=req.node_id,
             http_port=req.http_port,
             tcp_port=req.tcp_port,
             experts_dir=req.experts_dir,
-            expert_ids=req.expert_ids,
+            expert_ids=_format_expert_ids(req.expert_ids),
             master_url=master_url,
             python_env=req.python_env or 'venv',
             custom_python=req.custom_python,
@@ -168,8 +199,11 @@ async def register_worker_to_master(master_id: str, req: RegisterWorkerRequest):
         raise HTTPException(status_code=404, detail=f"Worker '{req.worker_node_id}' not found")
 
     master_url = manager.get_master_url(master_id)
+    if not master_url:
+        raise HTTPException(status_code=404, detail=f"Master '{master_id}' not found")
     body = {
         'worker_id': req.worker_node_id,
+        'host': _node_host(req.worker_node_id),
         'http_port': worker_info['http_port'],
         'tcp_port': worker_info['tcp_port'],
     }
@@ -177,7 +211,7 @@ async def register_worker_to_master(master_id: str, req: RegisterWorkerRequest):
     status_code, data = proxy.post(master_url, "/workers", json_data=body)
 
     if status_code != 200:
-        raise HTTPException(status_code=status_code, detail=data if isinstance(data, str) else data.get('error', 'Unknown error'))
+        _raise_proxy_error(status_code, data)
 
     return data
 
@@ -192,6 +226,71 @@ class UnloadExpertRequest(BaseModel):
     node_id: str
     expert_id: int
     layer_id: int
+
+
+class WorkerLoadExpertRequest(BaseModel):
+    expert_id: int
+    layer_id: int
+    file_path: Optional[str] = None
+
+
+class WorkerUnloadExpertRequest(BaseModel):
+    expert_id: int
+    layer_id: int
+
+
+@router.get("/{master_id}/workers/{worker_id}/status")
+async def get_master_worker_status(master_id: str, worker_id: str):
+    master_url = manager.get_master_url(master_id)
+    if not master_url:
+        raise HTTPException(status_code=404, detail=f"Master '{master_id}' not found")
+
+    status_code, data = proxy.get(master_url, f"/workers/{worker_id}/status")
+
+    if status_code != 200:
+        _raise_proxy_error(status_code, data)
+
+    return data
+
+
+@router.post("/{master_id}/workers/{worker_id}/load")
+async def master_worker_load_expert(master_id: str, worker_id: str, req: WorkerLoadExpertRequest):
+    master_url = manager.get_master_url(master_id)
+    if not master_url:
+        raise HTTPException(status_code=404, detail=f"Master '{master_id}' not found")
+
+    body = {
+        'expert_id': req.expert_id,
+        'layer_id': req.layer_id,
+    }
+    if req.file_path:
+        body['file_path'] = req.file_path
+
+    status_code, data = proxy.post(master_url, f"/workers/{worker_id}/load", json_data=body)
+
+    if status_code != 200:
+        _raise_proxy_error(status_code, data)
+
+    return data
+
+
+@router.post("/{master_id}/workers/{worker_id}/unload")
+async def master_worker_unload_expert(master_id: str, worker_id: str, req: WorkerUnloadExpertRequest):
+    master_url = manager.get_master_url(master_id)
+    if not master_url:
+        raise HTTPException(status_code=404, detail=f"Master '{master_id}' not found")
+
+    body = {
+        'expert_id': req.expert_id,
+        'layer_id': req.layer_id,
+    }
+
+    status_code, data = proxy.post(master_url, f"/workers/{worker_id}/unload", json_data=body)
+
+    if status_code != 200:
+        _raise_proxy_error(status_code, data)
+
+    return data
 
 
 @router.post("/master/load_expert")

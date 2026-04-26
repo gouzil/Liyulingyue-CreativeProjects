@@ -1,9 +1,10 @@
 import { useState, useEffect, useCallback } from 'react';
 import { api } from './api';
-import type { NodeInfo, MasterStatus, NodeStatus } from './types';
+import type { NodeInfo, MasterStatus, NodeStatus, MasterWorkerInfo, WorkerStatus } from './types';
 import './App.css';
 
 type Tab = 'dashboard' | 'nodes' | 'experts' | 'inference' | 'logs';
+type ExpertTarget = 'master' | `worker:${string}`;
 
 const NAV_ITEMS: { id: Tab; label: string; icon: string }[] = [
   { id: 'dashboard', label: '概览', icon: '◈' },
@@ -12,6 +13,22 @@ const NAV_ITEMS: { id: Tab; label: string; icon: string }[] = [
   { id: 'inference', label: '推理', icon: '▸' },
   { id: 'logs', label: '日志', icon: '☰' },
 ];
+
+const DEFAULT_NUM_LAYERS = 27;
+const DEFAULT_NUM_EXPERTS = 64;
+
+function expertKey(layerId: number, expertId: number) {
+  return `L${String(layerId).padStart(2, '0')}_E${String(expertId).padStart(3, '0')}`;
+}
+
+function applyExpertPathTemplate(template: string, layerId: number, expertId: number) {
+  if (!template.trim()) return undefined;
+  return template
+    .replaceAll('{layer_id}', String(layerId))
+    .replaceAll('{layer_id:03d}', String(layerId).padStart(3, '0'))
+    .replaceAll('{expert_id}', String(expertId))
+    .replaceAll('{expert_id:03d}', String(expertId).padStart(3, '0'));
+}
 
 function App() {
   const [tab, setTab] = useState<Tab>('dashboard');
@@ -27,6 +44,7 @@ function App() {
   useEffect(() => {
     localStorage.setItem('moe-theme', theme);
     document.documentElement.style.colorScheme = theme;
+    document.documentElement.dataset.theme = theme;
   }, [theme]);
 
   const showToast = useCallback((msg: string, type = 'success') => {
@@ -39,7 +57,7 @@ function App() {
   }, []);
 
   useEffect(() => {
-    refreshNodes();
+    queueMicrotask(refreshNodes);
     const t = setInterval(refreshNodes, 5000);
     return () => clearInterval(t);
   }, [refreshNodes]);
@@ -144,6 +162,17 @@ function DashboardView({ nodes, masters, workers, onRefresh, showToast, onNaviga
 
   const totalExperts = masters.reduce((sum, m) => sum + (masterStatuses[m.node_id]?.local_expert_count || 0), 0);
 
+  const deleteNode = async (nodeId: string) => {
+    if (!confirm(`确认删除节点 ${nodeId}？`)) return;
+    try {
+      await api.deleteNode(nodeId);
+      onRefresh();
+      showToast(`节点 ${nodeId} 已删除`);
+    } catch (e: unknown) {
+      showToast((e as Error).message, 'error');
+    }
+  };
+
   return (
     <>
       <div className="stats-row">
@@ -171,7 +200,7 @@ function DashboardView({ nodes, masters, workers, onRefresh, showToast, onNaviga
           <div className="section-divider"><h3>节点概览</h3></div>
           <div className="nodes-grid mt-3">
             {nodes.slice(0, 6).map(n => (
-              <NodeCard key={n.node_id} node={n} onDelete={() => { onRefresh(); showToast(`已删除 ${n.node_id}`); }} />
+              <NodeCard key={n.node_id} node={n} onDelete={() => deleteNode(n.node_id)} />
             ))}
           </div>
         </div>
@@ -349,7 +378,7 @@ function MasterForm({ onDone, showToast }: {
         node_id: nodeId,
         manifest_path: manifest,
         http_port: port ? parseInt(port) : undefined,
-        expert_ids: experts ? experts.split(',').map(Number) : undefined,
+        expert_ids: experts || undefined,
         python_env: pythonEnv,
         custom_python: pythonEnv === 'custom' ? customPython : undefined,
       });
@@ -416,7 +445,7 @@ function WorkerForm({ masters, onDone, showToast }: {
 
   useEffect(() => {
     if (masters.length > 0 && !masters.find(m => m.node_id === masterId)) {
-      setMasterId(masters[0].node_id);
+      queueMicrotask(() => setMasterId(masters[0].node_id));
     }
   }, [masters, masterId]);
 
@@ -434,9 +463,8 @@ function WorkerForm({ masters, onDone, showToast }: {
       await api.createWorker({
         node_id: nodeId,
         experts_dir: expertsDir || undefined,
-        expert_ids: expertIds ? expertIds.split(',').map(Number) : undefined,
-        master_id: master ? masterId : undefined,
-        master_url: master ? `http://localhost:${master.http_port}` : undefined,
+        expert_ids: expertIds || undefined,
+        master_node_id: master ? masterId : undefined,
         python_env: pythonEnv,
         custom_python: pythonEnv === 'custom' ? customPython : undefined,
       });
@@ -560,39 +588,106 @@ function ExpertsView({ masters, showToast }: {
   masters: NodeInfo[]; showToast: (m: string, t?: string) => void;
 }) {
   const [selected, setSelected] = useState(masters[0]?.node_id || '');
+  const [target, setTarget] = useState<ExpertTarget>('master');
+  const [masterStatus, setMasterStatus] = useState<MasterStatus | null>(null);
+  const [workers, setWorkers] = useState<Record<string, MasterWorkerInfo>>({});
+  const [workerStatuses, setWorkerStatuses] = useState<Record<string, WorkerStatus | null>>({});
   const [loadedExperts, setLoadedExperts] = useState<Set<string>>(new Set());
   const [loadingId, setLoadingId] = useState<string | null>(null);
+  const [pathTemplate, setPathTemplate] = useState('');
+  const [refreshing, setRefreshing] = useState(false);
 
   useEffect(() => {
     if (masters.length > 0 && !masters.find(m => m.node_id === selected)) {
-      setSelected(masters[0].node_id);
+      queueMicrotask(() => setSelected(masters[0].node_id));
     }
   }, [masters, selected]);
 
-  const refreshExperts = useCallback(async () => {
-    if (!selected) return;
-    try {
-      const s = await api.getNodeStatus(selected) as MasterStatus;
-      setLoadedExperts(new Set(s.local_experts || []));
-    } catch {
-      setLoadedExperts(new Set());
+  useEffect(() => {
+    if (target !== 'master' && !workers[target.slice('worker:'.length)]) {
+      queueMicrotask(() => setTarget('master'));
     }
-  }, [selected]);
+  }, [target, workers]);
 
   useEffect(() => {
-    refreshExperts();
+    if (!pathTemplate && masterStatus?.output_dir) {
+      queueMicrotask(() => {
+        setPathTemplate(`${masterStatus.output_dir}/experts/expert_{expert_id:03d}_layer_{layer_id:03d}.safetensors`);
+      });
+    }
+  }, [masterStatus?.output_dir, pathTemplate]);
+
+  const refreshExperts = useCallback(async () => {
+    if (!selected) {
+      setMasterStatus(null);
+      setWorkers({});
+      setWorkerStatuses({});
+      setLoadedExperts(new Set());
+      return;
+    }
+    setRefreshing(true);
+    try {
+      const status = await api.getNodeStatus(selected) as MasterStatus;
+      let nextWorkers: Record<string, MasterWorkerInfo> = {};
+      let nextWorkerStatuses: Record<string, WorkerStatus | null> = {};
+      try {
+        const workersResp = await api.getMasterWorkers(selected);
+        nextWorkers = workersResp.workers || {};
+        const workerStatusEntries = await Promise.all(
+          Object.keys(nextWorkers).map(async workerId => {
+            try {
+              return [workerId, await api.getMasterWorkerStatus(selected, workerId)] as const;
+            } catch {
+              return [workerId, null] as const;
+            }
+          })
+        );
+        nextWorkerStatuses = Object.fromEntries(workerStatusEntries);
+      } catch {
+        nextWorkers = {};
+        nextWorkerStatuses = {};
+      }
+
+      setMasterStatus(status);
+      setWorkers(nextWorkers);
+      setWorkerStatuses(nextWorkerStatuses);
+
+      const targetWorkerId = target === 'master' ? '' : target.slice('worker:'.length);
+      const targetLoaded = target === 'master'
+        ? status.local_experts || []
+        : nextWorkerStatuses[targetWorkerId]?.loaded_experts || nextWorkers[targetWorkerId]?.loaded_experts || [];
+      setLoadedExperts(new Set(targetLoaded));
+    } catch {
+      setMasterStatus(null);
+      setWorkers({});
+      setWorkerStatuses({});
+      setLoadedExperts(new Set());
+    } finally {
+      setRefreshing(false);
+    }
+  }, [selected, target]);
+
+  useEffect(() => {
+    queueMicrotask(refreshExperts);
     const t = setInterval(refreshExperts, 3000);
     return () => clearInterval(t);
   }, [refreshExperts]);
 
   const toggleExpert = async (layerId: number, expertId: number) => {
-    const key = `L${String(layerId).padStart(2, '0')}_E${String(expertId).padStart(3, '0')}`;
+    if (!selected) return showToast('请选择 Master', 'error');
+    const key = expertKey(layerId, expertId);
+    const targetWorkerId = target === 'master' ? '' : target.slice('worker:'.length);
     if (loadedExperts.has(key)) {
       setLoadingId(key);
       try {
-        await api.unloadExpert({ node_id: selected, expert_id: expertId, layer_id: layerId });
-        refreshExperts();
-        showToast(`L${layerId}_E${expertId} 已卸载`);
+        if (target === 'master') {
+          await api.unloadExpert({ node_id: selected, expert_id: expertId, layer_id: layerId });
+        } else {
+          const res = await api.unloadWorkerExpert(selected, targetWorkerId, { expert_id: expertId, layer_id: layerId });
+          setLoadedExperts(new Set(res.loaded_experts || []));
+        }
+        await refreshExperts();
+        showToast(`${key} 已卸载`);
       } catch (err: unknown) {
         showToast((err as Error).message, 'error');
       } finally {
@@ -601,9 +696,20 @@ function ExpertsView({ masters, showToast }: {
     } else {
       setLoadingId(key);
       try {
-        const res = await api.loadExpert({ node_id: selected, expert_id: expertId, layer_id: layerId });
-        setLoadedExperts(new Set(res.local_experts || []));
-        showToast(`${key} 已加载 (${res.size_mb.toFixed(1)} MB)`);
+        if (target === 'master') {
+          const res = await api.loadExpert({ node_id: selected, expert_id: expertId, layer_id: layerId });
+          setLoadedExperts(new Set(res.local_experts || []));
+          showToast(`${key} 已加载${res.size_mb ? ` (${res.size_mb.toFixed(1)} MB)` : ''}`);
+        } else {
+          const res = await api.loadWorkerExpert(selected, targetWorkerId, {
+            expert_id: expertId,
+            layer_id: layerId,
+            file_path: applyExpertPathTemplate(pathTemplate, layerId, expertId),
+          });
+          setLoadedExperts(new Set(res.loaded_experts || []));
+          showToast(`${key} 已分发到 ${targetWorkerId}${res.size_mb ? ` (${res.size_mb.toFixed(1)} MB)` : ''}`);
+        }
+        await refreshExperts();
       } catch (err: unknown) {
         showToast((err as Error).message, 'error');
       } finally {
@@ -612,23 +718,43 @@ function ExpertsView({ masters, showToast }: {
     }
   };
 
-  const NUM_LAYERS = 27;
-  const NUM_EXPERTS = 64;
+  const numLayers = masterStatus?.config?.num_layers || DEFAULT_NUM_LAYERS;
+  const numExperts = masterStatus?.config?.num_experts || DEFAULT_NUM_EXPERTS;
+  const workerIds = Object.keys(workers);
+  const selectedWorkerId = target === 'master' ? '' : target.slice('worker:'.length);
+  const totalWorkerLoaded = workerIds.reduce((sum, workerId) => {
+    const status = workerStatuses[workerId];
+    const info = workers[workerId];
+    return sum + (status?.loaded_count ?? info.loaded_count ?? info.loaded_experts?.length ?? 0);
+  }, 0);
 
   return (
     <div className="card">
       <div className="page-header">
         <div>
           <div className="page-title">Expert 管理</div>
-          <div className="page-desc">点击方块加载 / 卸载。共 {NUM_LAYERS} 层 × {NUM_EXPERTS} experts = {NUM_LAYERS * NUM_EXPERTS} 个</div>
+          <div className="page-desc">按目标加载、卸载或分发 Expert。共 {numLayers} 层 × {numExperts} experts = {numLayers * numExperts} 个</div>
         </div>
-        <div className="form-group" style={{ minWidth: 200 }}>
-          <select value={selected} onChange={e => setSelected(e.target.value)}>
-            <option value="">-- 选择 Master --</option>
-            {masters.map(m => (
-              <option key={m.node_id} value={m.node_id}>{m.node_id}</option>
-            ))}
-          </select>
+        <div className="expert-toolbar">
+          <div className="form-group">
+            <select value={selected} onChange={e => setSelected(e.target.value)}>
+              <option value="">-- 选择 Master --</option>
+              {masters.map(m => (
+                <option key={m.node_id} value={m.node_id}>{m.node_id}</option>
+              ))}
+            </select>
+          </div>
+          <div className="form-group">
+            <select value={target} onChange={e => setTarget(e.target.value as ExpertTarget)}>
+              <option value="master">Master 本地</option>
+              {workerIds.map(workerId => (
+                <option key={workerId} value={`worker:${workerId}`}>Worker: {workerId}</option>
+              ))}
+            </select>
+          </div>
+          <button className="btn-outline" onClick={refreshExperts} disabled={refreshing}>
+            {refreshing ? '刷新中...' : '刷新'}
+          </button>
         </div>
       </div>
 
@@ -637,42 +763,88 @@ function ExpertsView({ masters, showToast }: {
           <div className="empty-state-text">无可用 Master，请先创建节点</div>
         </div>
       ) : (
-        <div className="expert-grid-wrap mt-3">
-          {Array.from({ length: NUM_LAYERS }, (_, layerIdx) => {
-            const layerId = layerIdx + 1;
-            const loadedInLayer = Array.from({ length: NUM_EXPERTS }, (_, expIdx) => {
-              const key = `L${String(layerId).padStart(2, '0')}_E${String(expIdx).padStart(3, '0')}`;
-              return loadedExperts.has(key);
-            });
-            const loadedCount = loadedInLayer.filter(Boolean).length;
-            return (
-              <div key={layerId} className="expert-layer-row">
-                <div className="expert-layer-label">
-                  <span className="layer-num">L{layerId}</span>
-                  <span className="layer-count">{loadedCount}/{NUM_EXPERTS}</span>
+        <>
+          <div className="expert-targets mt-3">
+            <button
+              className={`expert-target ${target === 'master' ? 'active' : ''}`}
+              onClick={() => setTarget('master')}
+            >
+              <span className="target-title">Master 本地</span>
+              <span className="target-count">{masterStatus?.local_expert_count ?? 0} loaded</span>
+            </button>
+            {workerIds.map(workerId => {
+              const status = workerStatuses[workerId];
+              const info = workers[workerId];
+              const loadedCount = status?.loaded_count ?? info.loaded_count ?? info.loaded_experts?.length ?? 0;
+              return (
+                <button
+                  key={workerId}
+                  className={`expert-target ${target === `worker:${workerId}` ? 'active' : ''}`}
+                  onClick={() => setTarget(`worker:${workerId}`)}
+                >
+                  <span className="target-title">{workerId}</span>
+                  <span className="target-count">
+                    {loadedCount} loaded{status?.memory_mb ? ` / ${status.memory_mb.toFixed(1)} MB` : ''}
+                  </span>
+                  <span className="target-meta">{info.host}:{info.http_port} / TCP {info.tcp_port}</span>
+                </button>
+              );
+            })}
+          </div>
+
+          <div className="expert-summary">
+            <span>当前目标: {target === 'master' ? 'Master 本地' : selectedWorkerId}</span>
+            <span>本地 {masterStatus?.local_expert_count ?? 0}</span>
+            <span>Worker 合计 {totalWorkerLoaded}</span>
+            <span>已选目标 {loadedExperts.size}</span>
+          </div>
+
+          {target !== 'master' && (
+            <div className="form-group expert-path-control">
+              <label className="form-label">Worker Expert 文件模板</label>
+              <input
+                value={pathTemplate}
+                onChange={e => setPathTemplate(e.target.value)}
+                placeholder="/data/splits/experts/expert_{expert_id:03d}_layer_{layer_id:03d}.safetensors"
+              />
+              <div className="form-hint">留空时由 Master 使用自己的 output_dir 推导路径；远程 Worker 路径不同则填写模板。</div>
+            </div>
+          )}
+
+          <div className="expert-grid-wrap mt-3">
+            {Array.from({ length: numLayers }, (_, layerIdx) => {
+              const layerId = layerIdx + 1;
+              const loadedInLayer = Array.from({ length: numExperts }, (_, expIdx) => loadedExperts.has(expertKey(layerId, expIdx)));
+              const loadedCount = loadedInLayer.filter(Boolean).length;
+              return (
+                <div key={layerId} className="expert-layer-row">
+                  <div className="expert-layer-label">
+                    <span className="layer-num">L{layerId}</span>
+                    <span className="layer-count">{loadedCount}/{numExperts}</span>
+                  </div>
+                  <div className="expert-cells">
+                    {Array.from({ length: numExperts }, (_, expIdx) => {
+                      const key = expertKey(layerId, expIdx);
+                      const isLoaded = loadedExperts.has(key);
+                      const isLoading = loadingId === key;
+                      return (
+                        <button
+                          key={expIdx}
+                          className={`expert-cell ${isLoaded ? 'loaded' : ''} ${isLoading ? 'loading' : ''}`}
+                          onClick={() => toggleExpert(layerId, expIdx)}
+                          disabled={isLoading}
+                          title={`${key}${isLoaded ? ' (点击卸载)' : target === 'master' ? ' (点击加载到 Master)' : ` (点击分发到 ${selectedWorkerId})`}`}
+                        >
+                          {isLoading ? '...' : expIdx}
+                        </button>
+                      );
+                    })}
+                  </div>
                 </div>
-                <div className="expert-cells">
-                  {Array.from({ length: NUM_EXPERTS }, (_, expIdx) => {
-                    const key = `L${String(layerId).padStart(2, '0')}_E${String(expIdx).padStart(3, '0')}`;
-                    const isLoaded = loadedExperts.has(key);
-                    const isLoading = loadingId === key;
-                    return (
-                      <button
-                        key={expIdx}
-                        className={`expert-cell ${isLoaded ? 'loaded' : ''} ${isLoading ? 'loading' : ''}`}
-                        onClick={() => toggleExpert(layerId, expIdx)}
-                        disabled={isLoading}
-                        title={`${key}${isLoaded ? ' (点击卸载)' : ' (点击加载)'}`}
-                      >
-                        {isLoading ? '…' : expIdx}
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
-            );
-          })}
-        </div>
+              );
+            })}
+          </div>
+        </>
       )}
 
       <div className="section-divider mt-3"><h3>已加载列表 ({loadedExperts.size})</h3></div>
@@ -699,7 +871,7 @@ function InferenceView({ masters, showToast, loading, setLoading }: {
 
   useEffect(() => {
     if (masters.length > 0 && !masters.find(m => m.node_id === masterId)) {
-      setMasterId(masters[0].node_id);
+      queueMicrotask(() => setMasterId(masters[0].node_id));
     }
   }, [masters, masterId]);
 
@@ -781,11 +953,22 @@ function LogsView({ nodes }: { nodes: NodeInfo[] }) {
 
   useEffect(() => {
     if (!selected) return;
-    setLoading(true);
-    api.getNodeLogs(selected)
-      .then(res => setContent(res.content || '(无可用日志)'))
-      .catch(err => setContent('加载失败: ' + err.message))
-      .finally(() => setLoading(false));
+    let cancelled = false;
+    queueMicrotask(() => {
+      if (cancelled) return;
+      setLoading(true);
+      api.getNodeLogs(selected)
+        .then(res => {
+          if (!cancelled) setContent(res.content || '(无可用日志)');
+        })
+        .catch(err => {
+          if (!cancelled) setContent('加载失败: ' + err.message);
+        })
+        .finally(() => {
+          if (!cancelled) setLoading(false);
+        });
+    });
+    return () => { cancelled = true; };
   }, [selected]);
 
   return (
