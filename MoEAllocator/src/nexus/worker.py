@@ -19,6 +19,10 @@ logging.basicConfig(level=logging.INFO,
 logger = logging.getLogger("worker")
 
 
+def format_expert_key(layer_id: int, expert_id: int) -> str:
+    return f"L{layer_id:02d}_E{expert_id:03d}"
+
+
 class ExpertWorker:
     def __init__(self, worker_id: str, http_port: int, tcp_port: int):
         self.worker_id = worker_id
@@ -31,7 +35,7 @@ class ExpertWorker:
         self._running = False
 
     async def _http_handler_status(self, request: web.Request) -> web.Response:
-        loaded = sorted([f"expert_{eid}_layer_{lid}" for (lid, eid) in self.expert_weights.keys()])
+        loaded = sorted([format_expert_key(lid, eid) for (lid, eid) in self.expert_weights.keys()])
         memory_mb = sum(
             sum(t.numel() * 4 for t in w.values()) / (1 << 20)
             for w in self.expert_weights.values()
@@ -63,7 +67,15 @@ class ExpertWorker:
 
             size_mb = sum(t.numel() * 4 for t in weights.values()) / (1 << 20)
             logger.info(f"Loaded expert_{expert_id}_layer_{layer_id} ({size_mb:.1f} MB)")
-            return web.json_response({"status": "ok", "expert_id": expert_id, "layer_id": layer_id})
+            loaded = sorted([format_expert_key(lid, eid) for (lid, eid) in self.expert_weights.keys()])
+            return web.json_response({
+                "status": "ok",
+                "expert_id": expert_id,
+                "layer_id": layer_id,
+                "size_mb": round(size_mb, 1),
+                "loaded_count": len(self.expert_weights),
+                "loaded_experts": loaded,
+            })
         except Exception as e:
             logger.error(f"Load failed: {e}")
             return web.json_response({"error": str(e)}, status=500)
@@ -89,7 +101,12 @@ class ExpertWorker:
                 size_mb = sum(t.numel() * 4 for t in weights.values()) / (1 << 20)
                 loaded.append({"expert_id": expert_id, "layer_id": layer_id, "size_mb": round(size_mb, 1)})
                 logger.info(f"Loaded expert_{expert_id}_layer_{layer_id} ({size_mb:.1f} MB)")
-            return web.json_response({"loaded": loaded, "failed": failed, "total": len(self.expert_weights)})
+            return web.json_response({
+                "loaded": loaded,
+                "failed": failed,
+                "total": len(self.expert_weights),
+                "loaded_experts": sorted([format_expert_key(lid, eid) for (lid, eid) in self.expert_weights.keys()]),
+            })
         except Exception as e:
             return web.json_response({"error": str(e)}, status=500)
 
@@ -103,7 +120,14 @@ class ExpertWorker:
                 del self.expert_weights[key]
                 self.registered_experts.discard(key)
                 logger.info(f"Unloaded expert_{expert_id}_layer_{layer_id}")
-                return web.json_response({"status": "ok"})
+                loaded = sorted([format_expert_key(lid, eid) for (lid, eid) in self.expert_weights.keys()])
+                return web.json_response({
+                    "status": "ok",
+                    "expert_id": expert_id,
+                    "layer_id": layer_id,
+                    "loaded_count": len(self.expert_weights),
+                    "loaded_experts": loaded,
+                })
             return web.json_response({"error": "Expert not loaded"}, status=404)
         except Exception as e:
             return web.json_response({"error": str(e)}, status=500)
