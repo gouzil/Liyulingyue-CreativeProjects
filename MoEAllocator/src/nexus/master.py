@@ -473,12 +473,14 @@ class NexusMaster:
             expert_id = int(body["expert_id"])
             layer_id = int(body["layer_id"])
             size_mb = self.load_expert(expert_id, layer_id)
+            local_loaded = sorted([f"L{l:02d}_E{e:03d}" for (l, e) in self.local_experts.keys()])
             return web.json_response({
                 "status": "ok",
                 "expert_id": expert_id,
                 "layer_id": layer_id,
                 "size_mb": round(size_mb, 1),
                 "loaded_count": len(self.local_experts),
+                "local_experts": local_loaded,
             })
         except Exception as e:
             return web.json_response({"error": str(e)}, status=500)
@@ -489,11 +491,13 @@ class NexusMaster:
             expert_id = int(body["expert_id"])
             layer_id = int(body["layer_id"])
             self.unload_expert(expert_id, layer_id)
+            local_loaded = sorted([f"L{l:02d}_E{e:03d}" for (l, e) in self.local_experts.keys()])
             return web.json_response({
                 "status": "ok",
                 "expert_id": expert_id,
                 "layer_id": layer_id,
                 "loaded_count": len(self.local_experts),
+                "local_experts": local_loaded,
             })
         except Exception as e:
             return web.json_response({"error": str(e)}, status=500)
@@ -529,7 +533,7 @@ class NexusMaster:
             return web.json_response({"error": str(e), "trace": traceback.format_exc()}, status=500)
 
     async def _http_handler_status(self, request: web.Request) -> web.Response:
-        local_loaded = sorted([f"expert_{e}_layer_{l}" for (l, e) in self.local_experts.keys()])
+        local_loaded = sorted([f"L{l:02d}_E{e:03d}" for (l, e) in self.local_experts.keys()])
         return web.json_response({
             "nexus": "master",
             "http_port": self.http_port,
@@ -581,14 +585,14 @@ def main():
     parser.add_argument("--manifest", "-m", type=str,
         default="output/splits/ERNIE-4.5-21B-A3B-PT-k6/manifest.json")
     parser.add_argument("--port", "-p", type=int, default=5000, help="HTTP port")
-    parser.add_argument("--experts", "-e", type=str, default="0,1,2",
-        help="Comma-separated expert IDs to load locally (default: 0,1,2)")
+    parser.add_argument("--experts", "-e", type=str, default="",
+        help="Comma-separated expert IDs to load locally (empty = no experts loaded)")
     args = parser.parse_args()
 
-    expert_ids = [int(x) for x in args.experts.split(",")]
+    expert_ids = [int(x) for x in args.experts.split(",")] if args.experts.strip() else []
     master = NexusMaster(args.manifest, http_port=args.port, local_expert_ids=expert_ids)
     print("Loading model...")
-    master.load(expert_ids=expert_ids)
+    master.load(expert_ids=expert_ids if expert_ids else None)
     print(f"Model loaded. Local experts: {len(master.local_experts)}")
     master.start_blocking()
 

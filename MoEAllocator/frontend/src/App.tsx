@@ -377,7 +377,7 @@ function MasterForm({ onDone, showToast }: {
       </div>
       <div className="form-group">
         <label className="form-label">Expert IDs</label>
-        <input value={experts} onChange={e => setExperts(e.target.value)} placeholder="留空加载全部" />
+        <input value={experts} onChange={e => setExperts(e.target.value)} placeholder="留空不加载，后续动态加载" />
       </div>
       <div className="form-group">
         <label className="form-label">Python 环境</label>
@@ -460,7 +460,7 @@ function WorkerForm({ masters, onDone, showToast }: {
       </div>
       <div className="form-group">
         <label className="form-label">Expert IDs</label>
-        <input value={expertIds} onChange={e => setExpertIds(e.target.value)} placeholder="留空加载全部" />
+        <input value={expertIds} onChange={e => setExpertIds(e.target.value)} placeholder="留空不加载，后续动态加载" />
       </div>
       <div className="form-group">
         <label className="form-label">注册到 Master</label>
@@ -560,10 +560,8 @@ function ExpertsView({ masters, showToast }: {
   masters: NodeInfo[]; showToast: (m: string, t?: string) => void;
 }) {
   const [selected, setSelected] = useState(masters[0]?.node_id || '');
-  const [expertId, setExpertId] = useState('');
-  const [layerId, setLayerId] = useState('');
-  const [experts, setExperts] = useState<string[]>([]);
-  const [loading, setLoading] = useState(false);
+  const [loadedExperts, setLoadedExperts] = useState<Set<string>>(new Set());
+  const [loadingId, setLoadingId] = useState<string | null>(null);
 
   useEffect(() => {
     if (masters.length > 0 && !masters.find(m => m.node_id === selected)) {
@@ -575,9 +573,9 @@ function ExpertsView({ masters, showToast }: {
     if (!selected) return;
     try {
       const s = await api.getNodeStatus(selected) as MasterStatus;
-      setExperts(s.local_experts || []);
+      setLoadedExperts(new Set(s.local_experts || []));
     } catch {
-      setExperts([]);
+      setLoadedExperts(new Set());
     }
   }, [selected]);
 
@@ -587,74 +585,100 @@ function ExpertsView({ masters, showToast }: {
     return () => clearInterval(t);
   }, [refreshExperts]);
 
-  const loadExpert = async () => {
-    if (!selected) return showToast('请选择 Master 节点', 'error');
-    if (!expertId || !layerId) return showToast('请填写 expert_id 和 layer_id', 'error');
-    setLoading(true);
-    try {
-      const res = await api.loadExpert({ node_id: selected, expert_id: parseInt(expertId), layer_id: parseInt(layerId) });
-      showToast(`Expert expert_${expertId}_layer_${layerId} 已加载 (${res.size_mb.toFixed(1)} MB)`);
-      setExperts(res.local_experts || []);
-    } catch (err: unknown) {
-      showToast((err as Error).message, 'error');
-    } finally {
-      setLoading(false);
+  const toggleExpert = async (layerId: number, expertId: number) => {
+    const key = `L${String(layerId).padStart(2, '0')}_E${String(expertId).padStart(3, '0')}`;
+    if (loadedExperts.has(key)) {
+      setLoadingId(key);
+      try {
+        await api.unloadExpert({ node_id: selected, expert_id: expertId, layer_id: layerId });
+        refreshExperts();
+        showToast(`L${layerId}_E${expertId} 已卸载`);
+      } catch (err: unknown) {
+        showToast((err as Error).message, 'error');
+      } finally {
+        setLoadingId(null);
+      }
+    } else {
+      setLoadingId(key);
+      try {
+        const res = await api.loadExpert({ node_id: selected, expert_id: expertId, layer_id: layerId });
+        setLoadedExperts(new Set(res.local_experts || []));
+        showToast(`${key} 已加载 (${res.size_mb.toFixed(1)} MB)`);
+      } catch (err: unknown) {
+        showToast((err as Error).message, 'error');
+      } finally {
+        setLoadingId(null);
+      }
     }
   };
 
-  const unloadExpert = async () => {
-    if (!selected) return showToast('请选择 Master 节点', 'error');
-    if (!expertId || !layerId) return showToast('请填写 expert_id 和 layer_id', 'error');
-    setLoading(true);
-    try {
-      await api.unloadExpert({ node_id: selected, expert_id: parseInt(expertId), layer_id: parseInt(layerId) });
-      showToast(`Expert expert_${expertId}_layer_${layerId} 已卸载`);
-      refreshExperts();
-    } catch (err: unknown) {
-      showToast((err as Error).message, 'error');
-    } finally {
-      setLoading(false);
-    }
-  };
+  const NUM_LAYERS = 27;
+  const NUM_EXPERTS = 64;
 
   return (
     <div className="card">
       <div className="page-header">
         <div>
-          <div className="page-title">运行时 Expert 管理</div>
-          <div className="page-desc">在 Master 节点运行时动态加载或卸载 Expert，无需重启</div>
+          <div className="page-title">Expert 管理</div>
+          <div className="page-desc">点击方块加载 / 卸载。共 {NUM_LAYERS} 层 × {NUM_EXPERTS} experts = {NUM_LAYERS * NUM_EXPERTS} 个</div>
         </div>
-      </div>
-
-      <div className="form-grid mt-3">
-        <div className="form-group">
-          <label className="form-label">选择 Master</label>
+        <div className="form-group" style={{ minWidth: 200 }}>
           <select value={selected} onChange={e => setSelected(e.target.value)}>
             <option value="">-- 选择 Master --</option>
             {masters.map(m => (
-              <option key={m.node_id} value={m.node_id}>{m.node_id} (HTTP {m.http_port})</option>
+              <option key={m.node_id} value={m.node_id}>{m.node_id}</option>
             ))}
           </select>
         </div>
-        <div className="form-group">
-          <label className="form-label">Expert ID (0-63)</label>
-          <input type="number" value={expertId} onChange={e => setExpertId(e.target.value)} placeholder="如: 6" min="0" max="63" />
-        </div>
-        <div className="form-group">
-          <label className="form-label">Layer ID (1-27)</label>
-          <input type="number" value={layerId} onChange={e => setLayerId(e.target.value)} placeholder="如: 1" min="1" max="27" />
-        </div>
       </div>
 
-      <div className="expert-actions mt-3">
-        <button onClick={loadExpert} disabled={loading}>◉ 加载 Expert</button>
-        <button onClick={unloadExpert} disabled={loading} className="btn-danger">◉ 卸载 Expert</button>
-      </div>
+      {masters.length === 0 ? (
+        <div className="empty-state">
+          <div className="empty-state-text">无可用 Master，请先创建节点</div>
+        </div>
+      ) : (
+        <div className="expert-grid-wrap mt-3">
+          {Array.from({ length: NUM_LAYERS }, (_, layerIdx) => {
+            const layerId = layerIdx + 1;
+            const loadedInLayer = Array.from({ length: NUM_EXPERTS }, (_, expIdx) => {
+              const key = `L${String(layerId).padStart(2, '0')}_E${String(expIdx).padStart(3, '0')}`;
+              return loadedExperts.has(key);
+            });
+            const loadedCount = loadedInLayer.filter(Boolean).length;
+            return (
+              <div key={layerId} className="expert-layer-row">
+                <div className="expert-layer-label">
+                  <span className="layer-num">L{layerId}</span>
+                  <span className="layer-count">{loadedCount}/{NUM_EXPERTS}</span>
+                </div>
+                <div className="expert-cells">
+                  {Array.from({ length: NUM_EXPERTS }, (_, expIdx) => {
+                    const key = `L${String(layerId).padStart(2, '0')}_E${String(expIdx).padStart(3, '0')}`;
+                    const isLoaded = loadedExperts.has(key);
+                    const isLoading = loadingId === key;
+                    return (
+                      <button
+                        key={expIdx}
+                        className={`expert-cell ${isLoaded ? 'loaded' : ''} ${isLoading ? 'loading' : ''}`}
+                        onClick={() => toggleExpert(layerId, expIdx)}
+                        disabled={isLoading}
+                        title={`${key}${isLoaded ? ' (点击卸载)' : ' (点击加载)'}`}
+                      >
+                        {isLoading ? '…' : expIdx}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
 
-      <div className="section-divider mt-3"><h3>当前已加载 ({experts.length})</h3></div>
+      <div className="section-divider mt-3"><h3>已加载列表 ({loadedExperts.size})</h3></div>
       <div className="experts-display">
-        {experts.length === 0 && <div className="empty-state" style={{ padding: '20px 0' }}><div className="empty-state-text">无本地 Experts</div></div>}
-        {experts.map((e, i) => (
+        {loadedExperts.size === 0 && <div style={{ color: 'var(--text-tertiary)', fontSize: 13 }}>暂无已加载的 Experts</div>}
+        {Array.from(loadedExperts).map((e, i) => (
           <span key={i} className="expert-chip">{e}</span>
         ))}
       </div>

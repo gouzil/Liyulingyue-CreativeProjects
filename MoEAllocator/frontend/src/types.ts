@@ -72,6 +72,7 @@ export interface LoadExpertRequest {
 
 export interface LoadExpertResponse {
   size_mb: number;
+  loaded_count: number;
   local_experts: string[];
 }
 
