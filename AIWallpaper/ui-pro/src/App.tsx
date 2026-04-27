@@ -5,6 +5,7 @@ import GalleryPage from "./pages/GalleryPage";
 import TasksPage from "./pages/TasksPage";
 import SettingsPage from "./pages/SettingsPage";
 import ImageEditorModal from "./components/ImageEditorModal";
+import MessageBox from "./components/MessageBox";
 
 const prompts = [
   "Cyberpunk city at night, neon lights, rain on pavement, cinematic lighting, 8k resolution",
@@ -24,6 +25,8 @@ function App() {
   const [apiKey, setApiKey] = useState("");
   const [isGenerating, setIsGenerating] = useState(false);
   const [statusMsg, setStatusMsg] = useState("");
+  const [message, setMessage] = useState("");
+  const [messageVisible, setMessageVisible] = useState(false);
   const [previewUrl, setPreviewUrl] = useState("");
   const [enableCache, setEnableCache] = useState(true);
   const [cacheLimit, setCacheLimit] = useState(50);
@@ -31,6 +34,9 @@ function App() {
   const [autoPrompt, setAutoPrompt] = useState("");
   const [galleryPath, setGalleryPath] = useState("");
   const [imageSize, setImageSize] = useState("auto");
+  const [peUrl, setPeUrl] = useState("");
+  const [peKey, setPeKey] = useState("");
+  const [peModel, setPeModel] = useState("");
   const [galleryImages, setGalleryImages] = useState<any[]>([]);
   const [showViewer, setShowViewer] = useState(false);
   const [viewerUrl, setViewerUrl] = useState("");
@@ -53,6 +59,9 @@ function App() {
       setAutoPrompt(config.auto_prompt || "");
       setGalleryPath(config.gallery_path || "");
       setImageSize(config.image_size || "auto");
+      setPeUrl(config.pe_url || "");
+      setPeKey(config.pe_key || "");
+      setPeModel(config.pe_model || "");
     };
 
     // 与 Rust 回调签名对齐: onGenerationComplete(success, errorMsg, imagePayload)
@@ -69,14 +78,39 @@ function App() {
         sendIpc("get_gallery");
         setTimeout(() => setStatusMsg(""), 3000);
       } else {
-        setStatusMsg("生成失败：" + (errorMsg || "未知错误"));
-        setTimeout(() => setStatusMsg(""), 5000);
+        const msg = "生成失败：" + (errorMsg || "未知错误");
+        // 如果有统一的 showMessage，可用它显示浮层；否则回落到 statusMsg
+        try {
+          // @ts-ignore
+          if (typeof (window as any).__showMessage === 'function') {
+            // pass through to global (if any)
+            // @ts-ignore
+            (window as any).__showMessage(msg, 5000);
+          } else {
+            setStatusMsg(msg);
+            setTimeout(() => setStatusMsg(""), 5000);
+          }
+        } catch (e) {
+          setStatusMsg(msg);
+          setTimeout(() => setStatusMsg(""), 5000);
+        }
       }
     };
 
     // @ts-ignore
     window.onGalleryLoaded = (images: any[]) => {
       setGalleryImages(images);
+    };
+
+    // Prompt Enhance 回调
+    // @ts-ignore
+    window.onPromptEnhanced = (enhanced: string) => {
+      setIsGenerating(false);
+      if (enhanced) {
+        setPrompt(enhanced);
+        setStatusMsg("提示词已优化");
+        setTimeout(() => setStatusMsg(""), 3000);
+      }
     };
 
     // @ts-ignore
@@ -119,6 +153,26 @@ function App() {
     (window as any).ipc?.postMessage(JSON.stringify(payload));
   };
 
+  const showMessage = (msg: string, duration: number = 3000) => {
+    setMessage(msg);
+    setMessageVisible(true);
+    setTimeout(() => {
+      setMessageVisible(false);
+      setTimeout(() => setMessage(''), 300);
+    }, duration);
+  };
+
+  // expose to global so onGenerationComplete can use it if needed
+  // (also allows other scripts to call it)
+  useEffect(() => {
+    // @ts-ignore
+    (window as any).__showMessage = showMessage;
+    return () => {
+      // @ts-ignore
+      delete (window as any).__showMessage;
+    };
+  }, [showMessage]);
+
   const handleRandomPrompt = () => {
     const random = prompts[Math.floor(Math.random() * prompts.length)];
     setPrompt(random);
@@ -132,7 +186,10 @@ function App() {
       auto_refresh_hours: autoRefreshHours,
       auto_prompt: autoPrompt,
       gallery_path: galleryPath,
-      image_size: imageSize
+      image_size: imageSize,
+      pe_url: peUrl,
+      pe_key: peKey,
+      pe_model: peModel,
     });
     setStatusMsg("配置已同步");
     setTimeout(() => setStatusMsg(""), 2000);
@@ -146,6 +203,10 @@ function App() {
         {activeTab === "create" && (
           <CreatePage
             prompt={prompt}
+            peUrl={peUrl}
+            peKey={peKey}
+            peModel={peModel}
+            showMessage={showMessage}
             setPrompt={setPrompt}
             handleRandomPrompt={handleRandomPrompt}
             handleGenerate={handleGenerate}
@@ -161,6 +222,11 @@ function App() {
             autoRefreshHours={autoRefreshHours}
           />
         )}
+
+        {/* global message box */}
+        {/* lazy import component below */}
+        { /* import at top to ensure included by bundler */ }
+        
 
         {activeTab === "gallery" && (
           <GalleryPage 
@@ -219,6 +285,12 @@ function App() {
           <SettingsPage
             apiKey={apiKey}
             setApiKey={setApiKey}
+            peUrl={peUrl}
+            setPeUrl={setPeUrl}
+            peKey={peKey}
+            setPeKey={setPeKey}
+            peModel={peModel}
+            setPeModel={setPeModel}
             enableCache={enableCache}
             setEnableCache={setEnableCache}
             cacheLimit={cacheLimit}
@@ -235,13 +307,18 @@ function App() {
                 auto_refresh_hours: autoRefreshHours,
                 auto_prompt: autoPrompt,
                 gallery_path: galleryPath,
-                image_size: v
+                image_size: v,
+                pe_url: peUrl,
+                pe_key: peKey,
+                pe_model: peModel,
               });
             }}
             handleSaveKey={handleSaveKey}
           />
         )}
       </main>
+
+      <MessageBox message={message} visible={messageVisible} />
 
       {/* 图片查看器 */}
       {showViewer && (

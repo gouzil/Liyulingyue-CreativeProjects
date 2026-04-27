@@ -13,15 +13,20 @@ interface CreatePageProps {
   setActiveTab: (tab: string) => void;
   setShowViewer: (v: boolean) => void;
   autoRefreshHours: number;
+  peUrl: string;
+  peKey: string;
+  peModel: string;
+  showMessage: (msg: string, duration?: number) => void;
 }
 
 const CreatePage: React.FC<CreatePageProps> = ({
   prompt, setPrompt, handleRandomPrompt, handleGenerate,
   isGenerating, statusMsg, previewUrl, sendIpc, setActiveTab,
-  setShowViewer, autoRefreshHours
+  setShowViewer, autoRefreshHours, peUrl, peKey, peModel, showMessage
 }) => {
   const [isImporting, setIsImporting] = React.useState(false);
   const [showEditor, setShowEditor] = useState(false);
+  const [isEnhancing, setIsEnhancing] = useState(false);
 
   const handleEditSave = (base64Data: string, asWallpaper: boolean = false) => {
     setShowEditor(false);
@@ -55,6 +60,27 @@ const CreatePage: React.FC<CreatePageProps> = ({
             <button onClick={handleRandomPrompt} className="flex items-center gap-2 px-5 py-2.5 rounded-2xl bg-white border border-slate-200 hover:bg-slate-50 text-sm font-semibold transition-all active:scale-95 text-slate-600">
               <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="text-amber-500"><rect width="18" height="18" x="3" y="3" rx="2" ry="2" /><path d="M7 7h.01" /><path d="M17 7h.01" /><path d="M7 17h.01" /><path d="M17 17h.01" /><path d="M12 12h.01" /></svg>
               灵感骰子
+            </button>
+            <button
+              onClick={() => {
+                if (!prompt.trim()) {
+                  showMessage('提示：请输入要优化的提示词后再点击“优化表述”。', 3000);
+                  return;
+                }
+                if (!peKey || !peUrl) {
+                  showMessage('提示：请先在设置中填写 Prompt Enhance 的 API 地址与 Key（Settings）。', 4000);
+                  return;
+                }
+                setIsEnhancing(true);
+                sendIpc("prompt_enhance", prompt);
+                setTimeout(() => setIsEnhancing(false), 8000);
+              }}
+              disabled={isEnhancing}
+              className="flex items-center gap-2 px-5 py-2.5 rounded-2xl bg-white border border-slate-200 hover:bg-slate-50 text-sm font-semibold transition-all active:scale-95 text-slate-600 disabled:opacity-50"
+              title="优化当前提示词的表述"
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="text-emerald-500"><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-7"/><path d="M7 10l5 5 5-5"/></svg>
+              {isEnhancing ? '优化中...' : '优化表述'}
             </button>
             <button 
               onClick={() => {

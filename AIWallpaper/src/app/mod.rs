@@ -11,6 +11,13 @@ pub struct AppConfig {
     pub auto_refresh_hours: u32,
     pub auto_prompt: String,
     pub gallery_path: String,
+    // Prompt Enhance (文生文) 配置
+    #[serde(default)]
+    pub pe_url: String,
+    #[serde(default)]
+    pub pe_key: String,
+    #[serde(default)]
+    pub pe_model: String,
     #[serde(default = "default_image_size")]
     pub image_size: String,
 }
@@ -43,4 +50,5 @@ pub enum AppEvent {
     SwitchMode(String),
     GalleryLoaded(Vec<serde_json::Value>),
     ToggleDrawing(bool),
+    PromptEnhanced(String),
 }

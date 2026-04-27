@@ -12,6 +12,12 @@ interface SettingsPageProps {
   imageSize: string;
   setImageSize: (v: string) => void;
   handleSaveKey: () => void;
+  peUrl: string;
+  setPeUrl: (v: string) => void;
+  peKey: string;
+  setPeKey: (v: string) => void;
+  peModel: string;
+  setPeModel: (v: string) => void;
 }
 
 const SettingsPage: React.FC<SettingsPageProps> = ({
@@ -20,7 +26,10 @@ const SettingsPage: React.FC<SettingsPageProps> = ({
   cacheLimit, setCacheLimit,
   galleryPath, setGalleryPath,
   imageSize, setImageSize,
-  handleSaveKey
+  handleSaveKey,
+  peUrl, setPeUrl,
+  peKey, setPeKey,
+  peModel, setPeModel,
 }) => {
   const [showApiKey, setShowApiKey] = React.useState(false);
   const [saveMsg, setSaveMsg] = React.useState<string | null>(null);
@@ -67,12 +76,52 @@ const SettingsPage: React.FC<SettingsPageProps> = ({
               <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m6 9 6 6 6-6"/></svg>
             </div>
           </div>
+          </div>
+      </div>
+
+      {/* Prompt Enhance (文生文) 配置 */}
+      <div>
+        <h3 className="text-xs font-black text-slate-400 uppercase tracking-widest mb-6">Prompt Enhance（文生文）</h3>
+        <div className="bg-white border border-slate-200 rounded-[2rem] p-8 shadow-lg space-y-4">
+          <div className="flex items-start gap-3 pb-2">
+            <div className="p-2 bg-slate-100 rounded-xl text-slate-600">
+              <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" /></svg>
+            </div>
+            <div className="flex-1">
+              <p className="text-sm font-semibold text-slate-700 font-[system-ui]">OpenAI 格式的 PE 服务配置</p>
+              <p className="text-[10px] text-slate-400 mt-0.5">只需填写到 https://.../v1 即可，框架会自动补全 /chat/completions；同时提供 Key 与 Model。</p>
+            </div>
+          </div>
+
+          <div className="space-y-3">
+            <input
+              type="text"
+              value={peUrl}
+              onChange={(e) => setPeUrl(e.target.value)}
+              placeholder="接口地址（例如 https://api.openai.com/v1 ）"
+              className="w-full bg-slate-50 border border-slate-200 rounded-2xl p-4 text-sm focus:ring-4 focus:ring-blue-500/10 focus:border-blue-500/50 outline-none transition-all"
+            />
+            <input
+              type="text"
+              value={peKey}
+              onChange={(e) => setPeKey(e.target.value)}
+              placeholder="API Key (Bearer)"
+              className="w-full bg-slate-50 border border-slate-200 rounded-2xl p-4 text-sm focus:ring-4 focus:ring-blue-500/10 focus:border-blue-500/50 outline-none transition-all"
+            />
+            <input
+              type="text"
+              value={peModel}
+              onChange={(e) => setPeModel(e.target.value)}
+              placeholder="Model 名称（例如 gpt-4o-mini 或 gpt-3.5-turbo）"
+              className="w-full bg-slate-50 border border-slate-200 rounded-2xl p-4 text-sm focus:ring-4 focus:ring-blue-500/10 focus:border-blue-500/50 outline-none transition-all"
+            />
+          </div>
         </div>
       </div>
 
       {/* API 配置 */}
       <div>
-        <h3 className="text-xs font-black text-slate-400 uppercase tracking-widest mb-6">AI Studio API Token</h3>
+        <h3 className="text-xs font-black text-slate-400 uppercase tracking-widest mb-6">AI Studio API Token（文生图）</h3>
         <div className="bg-white border border-slate-200 rounded-[2rem] p-8 shadow-lg space-y-4">
           <div className="flex items-start gap-3 pb-2">
             <div className="p-2 bg-slate-100 rounded-xl text-slate-600">
@@ -106,7 +155,7 @@ const SettingsPage: React.FC<SettingsPageProps> = ({
               )}
             </button>
           </div>
-          <p className="text-[10px] text-slate-400 px-1 font-medium italic">您的 Token 将安全地存储在本地配置文件中，仅用于壁纸生成请求。</p>
+              <p className="text-[10px] text-slate-400 px-1 font-medium italic">您的 Token 将安全地存储在本地配置文件中，仅用于壁纸生成请求。若服务区分不同功能，请在 Token 后添加文生图后缀以区分。</p>
         </div>
       </div>
 

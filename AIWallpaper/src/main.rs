@@ -147,6 +147,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 auto_prompt: "Cyberpunk city, neon lights, 8k resolution".to_string(),
                 gallery_path: "".to_string(),
                 image_size: "auto".to_string(),
+                pe_url: "".to_string(),
+                pe_key: "".to_string(),
+                pe_model: "".to_string(),
             })
     } else {
         AppConfig { 
@@ -157,6 +160,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             auto_prompt: "Cyberpunk city, neon lights, 8k resolution".to_string(),
             gallery_path: "".to_string(),
             image_size: "auto".to_string(),
+            pe_url: "".to_string(),
+            pe_key: "".to_string(),
+            pe_model: "".to_string(),
         }
     };
 
@@ -537,6 +543,14 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                         );
                         let _ = control_webview.evaluate_script(&js_ui);
                         let _ = pro_webview.evaluate_script(&js_ui);
+                    }
+                    AppEvent::PromptEnhanced(text) => {
+                        let js = format!(
+                            "if (window.onPromptEnhanced) {{ window.onPromptEnhanced({}) }}",
+                            serde_json::to_string(&text).unwrap()
+                        );
+                        let _ = control_webview.evaluate_script(&js);
+                        let _ = pro_webview.evaluate_script(&js);
                     }
                     AppEvent::GalleryLoaded(images) => {
                         let js = format!(

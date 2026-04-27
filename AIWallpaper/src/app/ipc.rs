@@ -190,6 +190,25 @@ pub async fn handle_message(msg_raw: &str, ctx: &IpcContext) {
                     }
                 });
             }
+            "prompt_enhance" => {
+                let proxy_pe = ctx.proxy.clone();
+                let cfg = ctx.config.lock().unwrap().clone();
+                let prompt = msg.value.clone();
+                tokio::spawn(async move {
+                    if cfg.pe_url.is_empty() || cfg.pe_model.is_empty() {
+                        let _ = proxy_pe.send_event(AppEvent::Error("Prompt Enhance 未配置 URL 或 MODEL".to_string()));
+                        return;
+                    }
+                    match api::enhance_prompt(&cfg.pe_url, &cfg.pe_key, &cfg.pe_model, &prompt).await {
+                        Ok(enhanced) => {
+                            let _ = proxy_pe.send_event(AppEvent::PromptEnhanced(enhanced));
+                        }
+                        Err(e) => {
+                            let _ = proxy_pe.send_event(AppEvent::Error(format!("PE 失败: {}", e)));
+                        }
+                    }
+                });
+            }
             "get_gallery" => {
                 let cfg = ctx.config.lock().unwrap().clone();
                 let app_data_dir_gallery = ctx.app_data_dir.clone();

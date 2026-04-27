@@ -134,3 +134,101 @@ pub async fn generate_image(prompt: &str, api_key: &str, size_override: Option<S
 
     Err("No image data found in response".into())
 }
+
+#[derive(Deserialize)]
+struct ChatMessage {
+    role: String,
+    content: String,
+}
+
+#[derive(Deserialize)]
+struct ChatChoice {
+    message: ChatMessage,
+}
+
+#[derive(Deserialize)]
+struct ChatCompletionResponse {
+    choices: Vec<ChatChoice>,
+}
+
+/// 使用 OpenAI 格式的接口对 prompt 进行增强（Prompt Enhance）
+pub async fn enhance_prompt(url: &str, api_key: &str, model: &str, prompt: &str) -> Result<String, Box<dyn Error + Send + Sync>> {
+    let client = Client::new();
+
+    // 构造 messages，要求模型只返回增强后的提示词文本
+    let messages = vec![
+        serde_json::json!({"role":"system","content":"You are a prompt enhancement assistant. Given a short user prompt, rewrite and expand it into a detailed, descriptive prompt for image generation. Output only the improved prompt text without any extra commentary."}),
+        serde_json::json!({"role":"user","content": prompt}),
+    ];
+
+    let body = serde_json::json!({
+        "model": model,
+        "messages": messages,
+        "max_tokens": 512,
+    });
+
+    // 如果用户只填写到 /v1（或不包含 chat/completions），自动补全为 /chat/completions
+    let base = url.trim_end_matches('/');
+    let full_url = if base.contains("/chat") || base.contains("/completions") {
+        base.to_string()
+    } else {
+        format!("{}/chat/completions", base)
+    };
+
+    // 尝试多种鉴权头（有些服务需要 'bearer {key}', 有些可能直接使用 key 或 X-API-Key）
+    let mut last_err_text = String::new();
+    let mut resp_opt: Option<reqwest::Response> = None;
+
+    let mut auth_candidates: Vec<Option<String>> = Vec::new();
+    if api_key.is_empty() {
+        auth_candidates.push(None);
+    } else {
+        auth_candidates.push(Some(format!("bearer {}", api_key)));
+        auth_candidates.push(Some(format!("Bearer {}", api_key)));
+        auth_candidates.push(Some(api_key.to_string())); // no prefix
+    }
+
+    for auth in auth_candidates.into_iter() {
+        let mut req = client.post(&full_url)
+            .header("Content-Type", "application/json")
+            .json(&body);
+        if let Some(a) = auth {
+            req = req.header("Authorization", a);
+        }
+
+        let resp = req.send().await?;
+        if resp.status().is_success() {
+            resp_opt = Some(resp);
+            break;
+        } else {
+            last_err_text = resp.text().await.unwrap_or_default();
+        }
+    }
+
+    // 最后尝试常见备选 header: X-API-Key（部分服务使用此 header）
+    if resp_opt.is_none() && !api_key.is_empty() {
+        let resp = client.post(&full_url)
+            .header("Content-Type", "application/json")
+            .header("X-API-Key", api_key)
+            .json(&body)
+            .send()
+            .await?;
+        if resp.status().is_success() {
+            resp_opt = Some(resp);
+        } else {
+            last_err_text = resp.text().await.unwrap_or_default();
+        }
+    }
+
+    let resp = match resp_opt {
+        Some(r) => r,
+        None => return Err(format!("PE API Error: {} (url: {})", last_err_text, full_url).into()),
+    };
+
+    let json: ChatCompletionResponse = resp.json().await?;
+    if let Some(choice) = json.choices.into_iter().next() {
+        return Ok(choice.message.content);
+    }
+
+    Err("No completion returned".into())
+}
