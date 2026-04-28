@@ -28,10 +28,11 @@ python -m src.nexus.master \
     --manifest output/splits/ERNIE-4.5-21B-A3B-PT-full/manifest.json \
     --port 5000 \
     --host 0.0.0.0 \
+    --dtype fp16 \
     --experts 0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31
 ```
 
-解释：Master 在本地加载 expert 0~31（共 32 列 × 27 层）。
+解释：Master 在本地加载 expert 0~31（共 32 列 × 27 层），使用 FP16 精度（内存减半）。
 
 ---
 
@@ -45,6 +46,7 @@ python -m src.nexus.worker \
     --http-port 8000 \
     --tcp-port 11000 \
     --host 0.0.0.0 \
+    --dtype fp16 \
     --experts-dir output/splits/ERNIE-4.5-21B-A3B-PT-full/experts \
     --expert-ids 32,33,34,35,36,37,38,39,40,41,42,43,44,45,46,47,48,49,50,51,52,53,54,55,56,57,58,59,60,61,62,63 \
     --master http://<MACHINE1_IP>:5000/workers
@@ -106,3 +108,13 @@ Layer 1: token0 selected=[15, 3, 42, 8, 27, 55]
 - **Routing 按 (layer, expert) 独立**：Worker 32~63 列的 expert 只在 Machine 2 上，Master 分发时会查 routing 表找到对应 Worker
 - **Worker 动态 load/unload**：Worker 可随时动态加载/卸载 expert，load/unload 后自动重新注册到 Master 更新 routing
 - **Master 本地 load**：Master 也可以通过 HTTP API 动态加载 expert 到本地（`curl -X POST http://<MACHINE1_IP>:5000/load_expert -d '{"expert_id":5,"layer_id":1}'`）
+
+## 精度控制
+
+```bash
+--dtype fp16    # float16，省内存（约减半）
+--dtype bf16    # bfloat16，动态范围同 float32，精度同 fp16
+--dtype float32 # 默认，完整精度
+```
+
+**重要**：Master 和 Worker 必须使用相同 `--dtype`，否则 TCP 分发时数据类型不匹配会导致结果错误。

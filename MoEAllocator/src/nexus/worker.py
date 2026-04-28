@@ -22,12 +22,13 @@ logger = logging.getLogger("worker")
 
 class ExpertWorker:
     def __init__(self, worker_id: str, http_port: int, tcp_port: int, bind_host: str = "127.0.0.1",
-                 experts_dir: str = ""):
+                 experts_dir: str = "", dtype: torch.dtype = torch.float32):
         self.worker_id = worker_id
         self.http_port = http_port
         self.tcp_port = tcp_port
         self.bind_host = bind_host
         self.experts_dir = experts_dir
+        self.dtype = dtype
         self.master_url: Optional[str] = None
 
         self.expert_weights: dict[tuple[int, int], dict[str, torch.Tensor]] = {}
@@ -82,7 +83,7 @@ class ExpertWorker:
 
             weights = storch.load_file(file_path)
             self.expert_weights[(layer_id, expert_id)] = {
-                k: v.to(torch.float32) for k, v in weights.items()
+                k: v.to(self.dtype) for k, v in weights.items()
             }
             self.registered_experts.add((layer_id, expert_id))
 
@@ -108,7 +109,7 @@ class ExpertWorker:
                     continue
                 weights = storch.load_file(file_path)
                 self.expert_weights[(layer_id, expert_id)] = {
-                    k: v.to(torch.float32) for k, v in weights.items()
+                    k: v.to(self.dtype) for k, v in weights.items()
                 }
                 self.registered_experts.add((layer_id, expert_id))
                 size_mb = sum(t.numel() * 4 for t in weights.values()) / (1 << 20)
@@ -169,13 +170,15 @@ class ExpertWorker:
         logger.info(f"TCP connection from {addr}")
         try:
             header = await self._read_exact(reader, 24)
-            layer_id, expert_id, batch_size, seq_len, hidden_size, dtype_flag = struct.unpack("!IIIIII", header)
+            layer_id, expert_id, batch_size, seq_len, hidden_size, dtype_code = struct.unpack("!IIIIII", header)
+            dtype_map = {0: torch.float32, 1: torch.float16, 2: torch.bfloat16}
+            dtype = dtype_map.get(dtype_code, torch.float32)
 
             data_len = await self._read_exact(reader, 4)
             n_bytes = struct.unpack("!I", data_len)[0]
             hidden_data = await self._read_exact(reader, n_bytes)
 
-            hidden = torch.frombuffer(hidden_data, dtype=torch.float32).reshape(batch_size, seq_len, hidden_size)
+            hidden = torch.frombuffer(hidden_data, dtype=dtype).reshape(batch_size, seq_len, hidden_size)
 
             key = (layer_id, expert_id)
             if key not in self.expert_weights:
@@ -187,9 +190,9 @@ class ExpertWorker:
             weights = self.expert_weights[key]
             down_w = up_w = gate_w = None
             for k, v in weights.items():
-                if k.endswith("down_proj.weight"): down_w = v
-                elif k.endswith("up_proj.weight"): up_w = v
-                elif k.endswith("gate_proj.weight"): gate_w = v
+                if k.endswith("down_proj.weight"): down_w = v.to(dtype)
+                elif k.endswith("up_proj.weight"): up_w = v.to(dtype)
+                elif k.endswith("gate_proj.weight"): gate_w = v.to(dtype)
 
             if None in (down_w, up_w, gate_w):
                 logger.error(f"Incomplete weights for expert_{expert_id}_layer_{layer_id}")
@@ -202,7 +205,7 @@ class ExpertWorker:
                 down_w
             )
 
-            result_bytes = down.numpy().tobytes()
+            result_bytes = down.to(dtype).numpy().tobytes()
             writer.write(struct.pack("!I", len(result_bytes)))
             writer.write(result_bytes)
             await writer.drain()
@@ -255,10 +258,17 @@ def main():
     parser.add_argument("--master", type=str, default="", help="Master URL (for auto-register)")
     parser.add_argument("--experts-dir", type=str, default="", help="Directory containing expert .safetensors files")
     parser.add_argument("--expert-ids", type=str, default="", help="Comma-separated expert IDs to auto-load (e.g., '3,4,5,6')")
+    parser.add_argument("--dtype", "-d", type=str, default="float32",
+        choices=["float32", "fp16", "float16", "bf16", "bfloat16"],
+        help="Weight precision: float32 (default), fp16/float16, bf16/bfloat16")
     args = parser.parse_args()
 
+    dtype_map = {"float32": torch.float32, "fp16": torch.float16, "float16": torch.float16,
+                  "bf16": torch.bfloat16, "bfloat16": torch.bfloat16}
+    dtype = dtype_map[args.dtype]
     worker_id = args.id or f"worker-{args.http_port}"
-    worker = ExpertWorker(worker_id, args.http_port, args.tcp_port, bind_host=args.host, experts_dir=args.experts_dir)
+    worker = ExpertWorker(worker_id, args.http_port, args.tcp_port, bind_host=args.host,
+                         experts_dir=args.experts_dir, dtype=dtype)
 
     if args.experts_dir and args.expert_ids:
         expert_ids = [int(x) for x in args.expert_ids.split(",")]
@@ -269,7 +279,7 @@ def main():
                 file_path = os.path.join(args.experts_dir, file_name)
                 if os.path.exists(file_path):
                     weights = storch.load_file(file_path)
-                    worker.expert_weights[(lid, eid)] = {k: v.to(torch.float32) for k, v in weights.items()}
+                    worker.expert_weights[(lid, eid)] = {k: v.to(dtype) for k, v in weights.items()}
                     worker.registered_experts.add((lid, eid))
         logger.info(f"Pre-loaded {len(worker.expert_weights)} expert files")
 

@@ -40,11 +40,12 @@ class WorkerInfo:
 
 class NexusMaster:
     def __init__(self, manifest_path: str, http_port: int = 5000, bind_host: str = "127.0.0.1",
-                 local_expert_ids: list[int] | None = None):
+                 local_expert_ids: list[int] | None = None, dtype: torch.dtype = torch.float32):
         self.manifest_path = manifest_path
         self.http_port = http_port
         self.bind_host = bind_host
         self.local_expert_ids = local_expert_ids or []
+        self.dtype = dtype
 
         with open(manifest_path) as f:
             data = json.load(f)
@@ -73,21 +74,21 @@ class NexusMaster:
         backbone_path = self.output_dir / "backbone" / "backbone.safetensors"
         w = storch.load_file(str(backbone_path))
         for k, v in w.items():
-            self.weights[k] = v.to(torch.float32)
+            self.weights[k] = v.to(self.dtype)
         logger.info(f"  {len(w)} backbone tensors")
 
         gate_path = self.output_dir / "backbone" / "gate.safetensors"
         if gate_path.exists():
             gw = storch.load_file(str(gate_path))
             for k, v in gw.items():
-                self.weights[k] = v.to(torch.float32)
+                self.weights[k] = v.to(self.dtype)
             logger.info(f"  {len(gw)} gate tensors")
 
         shared_path = self.output_dir / "backbone" / "shared_expert.safetensors"
         if shared_path.exists():
             shared = storch.load_file(str(shared_path))
             for k, v in shared.items():
-                self.weights[k] = v.to(torch.float32)
+                self.weights[k] = v.to(self.dtype)
             logger.info(f"  {len(shared)} shared expert tensors")
 
     def load_local_experts(self, expert_ids: list[int]):
@@ -112,7 +113,7 @@ class NexusMaster:
         if not fp.exists():
             raise FileNotFoundError(f"Expert file not found: {fp}")
         w = storch.load_file(str(fp))
-        self.local_experts[(layer_id, expert_id)] = {k: v.to(torch.float32) for k, v in w.items()}
+        self.local_experts[(layer_id, expert_id)] = {k: v.to(self.dtype) for k, v in w.items()}
         size_mb = sum(t.numel() * 4 for t in w.values()) / (1 << 20)
         return size_mb
 
@@ -200,8 +201,9 @@ class NexusMaster:
                 asyncio.open_connection(worker.host, worker.tcp_port),
                 timeout=30.0
             )
-            header = struct.pack("!IIIIII", layer_id, expert_id, hidden.shape[0], hidden.shape[1], hidden.shape[2], 0)
-            data = hidden.numpy().tobytes()
+            dtype_code = {torch.float32: 0, torch.float16: 1, torch.bfloat16: 2}.get(self.dtype, 0)
+            header = struct.pack("!IIIIII", layer_id, expert_id, hidden.shape[0], hidden.shape[1], hidden.shape[2], dtype_code)
+            data = hidden.to(self.dtype).numpy().tobytes()
             writer.write(header)
             writer.write(struct.pack("!I", len(data)))
             writer.write(data)
@@ -655,10 +657,17 @@ def main():
     parser.add_argument("--host", type=str, default="127.0.0.1", help="Bind host (default: 127.0.0.1)")
     parser.add_argument("--experts", "-e", type=str, default="",
         help="Comma-separated expert IDs to load locally (empty = no experts loaded)")
+    parser.add_argument("--dtype", "-d", type=str, default="float32",
+        choices=["float32", "fp16", "float16", "bf16", "bfloat16"],
+        help="Weight precision: float32 (default), fp16/float16, bf16/bfloat16")
     args = parser.parse_args()
 
+    dtype_map = {"float32": torch.float32, "fp16": torch.float16, "float16": torch.float16,
+                  "bf16": torch.bfloat16, "bfloat16": torch.bfloat16}
+    dtype = dtype_map[args.dtype]
     expert_ids = [int(x) for x in args.experts.split(",")] if args.experts.strip() else []
-    master = NexusMaster(args.manifest, http_port=args.port, bind_host=args.host, local_expert_ids=expert_ids)
+    master = NexusMaster(args.manifest, http_port=args.port, bind_host=args.host,
+                         local_expert_ids=expert_ids, dtype=dtype)
     print("Loading model...")
     master.load(expert_ids=expert_ids if expert_ids else None)
     print(f"Model loaded. Local experts: {len(master.local_experts)}")
