@@ -46,13 +46,14 @@ python -m src.nexus.worker \
     --http-port 8000 \
     --tcp-port 11000 \
     --host 0.0.0.0 \
+    --advertise-host <MACHINE2_IP> \
     --dtype fp16 \
     --experts-dir output/splits/ERNIE-4.5-21B-A3B-PT-full/experts \
     --expert-ids 32,33,34,35,36,37,38,39,40,41,42,43,44,45,46,47,48,49,50,51,52,53,54,55,56,57,58,59,60,61,62,63 \
     --master http://<MACHINE1_IP>:5000/workers
 ```
 
-解释：Worker 在本地加载 expert 32~63（共 32 列），启动后自动注册到 Machine 1 的 Master。
+解释：Worker 绑定 `0.0.0.0`，但通过 `--advertise-host` 告诉 Master 自己的实际 IP；Master TCP 分发时使用该地址连接 Worker。Worker 在本地加载 expert 32~63（共 32 列），启动后自动注册到 Machine 1 的 Master。
 
 ---
 
@@ -63,7 +64,7 @@ python -m src.nexus.worker \
 在 **Machine 1** 终端查看 Master 日志，应看到：
 
 ```
-Worker registered: worker-1 at <MACHINE2_IP>:8000/11000, experts=864
+Worker registered: worker-1 at <MACHINE2_IP>:8000/11000 (advertise=<MACHINE2_IP>), experts=864
 ```
 
 Worker 加载 864 个文件（32 列 × 27 层）。
@@ -105,6 +106,7 @@ Layer 1: token0 selected=[15, 3, 42, 8, 27, 55]
 
 ## 关键设计
 
+- **Worker 可访问地址**：Worker 用 `--host` 绑定监听地址，用 `--advertise-host` 告知 Master 自己的对外地址。跨机器时 `--advertise-host` 必须设为实际 IP，否则 Master TCP 分发会连接 `0.0.0.0` 而失败
 - **Routing 按 (layer, expert) 独立**：Worker 32~63 列的 expert 只在 Machine 2 上，Master 分发时会查 routing 表找到对应 Worker
 - **Worker 动态 load/unload**：Worker 可随时动态加载/卸载 expert，load/unload 后自动重新注册到 Master 更新 routing
 - **Master 本地 load**：Master 也可以通过 HTTP API 动态加载 expert 到本地（`curl -X POST http://<MACHINE1_IP>:5000/load_expert -d '{"expert_id":5,"layer_id":1}'`）

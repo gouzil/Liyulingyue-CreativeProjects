@@ -48,6 +48,7 @@ export interface CreateWorkerRequest {
   python_env?: string;
   custom_python?: string;
   host?: string;
+  advertise_host?: string;
 }
 
 export interface DetectedPythonEnvs {

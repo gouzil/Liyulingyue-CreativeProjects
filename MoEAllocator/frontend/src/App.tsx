@@ -473,6 +473,7 @@ function WorkerForm({ masters, onDone, showToast }: {
   const [masterId, setMasterId] = useState('');
   const [masterUrl, setMasterUrl] = useState('');
   const [host, setHost] = useState('127.0.0.1');
+  const [advertiseHost, setAdvertiseHost] = useState('');
   const [pythonEnv, setPythonEnv] = useState('venv');
   const [customPython, setCustomPython] = useState('');
   const [pythonEnvs, setPythonEnvs] = useState<Record<string, string>>({});
@@ -499,6 +500,7 @@ function WorkerForm({ masters, onDone, showToast }: {
       await api.createWorker({
         node_id: nodeId,
         host,
+        advertise_host: advertiseHost || undefined,
         experts_dir: expertsDir || undefined,
         expert_ids: expertIds ? expertIds.split(',').map(Number) : undefined,
         master_url: resolvedMasterUrl,
@@ -525,6 +527,10 @@ function WorkerForm({ masters, onDone, showToast }: {
           <option value="127.0.0.1">127.0.0.1 (本地)</option>
           <option value="0.0.0.0">0.0.0.0 (所有网卡)</option>
         </select>
+      </div>
+      <div className="form-group">
+        <label className="form-label">对外地址 (Master 访问用)</label>
+        <input value={advertiseHost} onChange={e => setAdvertiseHost(e.target.value)} placeholder="留空则同绑定地址" />
       </div>
       <div className="form-group">
         <label className="form-label">Experts 目录</label>

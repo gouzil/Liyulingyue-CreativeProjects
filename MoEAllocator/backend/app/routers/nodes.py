@@ -23,6 +23,7 @@ class StartWorkerRequest(BaseModel):
     http_port: Optional[int] = None
     tcp_port: Optional[int] = None
     host: Optional[str] = '127.0.0.1'
+    advertise_host: Optional[str] = ''
     experts_dir: Optional[str] = None
     expert_ids: Optional[list[int]] = None
     master_node_id: Optional[str] = None
@@ -109,6 +110,7 @@ async def create_worker(req: StartWorkerRequest):
             http_port=req.http_port,
             tcp_port=req.tcp_port,
             host=req.host or '127.0.0.1',
+            advertise_host=req.advertise_host or '',
             experts_dir=req.experts_dir,
             expert_ids=req.expert_ids,
             master_url=master_url,

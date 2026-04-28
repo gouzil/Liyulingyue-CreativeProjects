@@ -135,7 +135,7 @@ class ProcessManager:
         }
 
     def start_worker(self, node_id: str, http_port: Optional[int] = None, tcp_port: Optional[int] = None,
-                     host: str = '127.0.0.1',
+                     host: str = '127.0.0.1', advertise_host: str = '',
                      experts_dir: Optional[str] = None, expert_ids: Optional[str] = None,
                      master_url: Optional[str] = None, python_env: str = 'venv',
                      custom_python: Optional[str] = None) -> dict:
@@ -154,6 +154,8 @@ class ProcessManager:
             '--tcp-port', str(tcp),
             '--host', host,
         ]
+        if advertise_host:
+            cmd += ['--advertise-host', advertise_host]
         if experts_dir:
             cmd += ['--experts-dir', experts_dir]
         if expert_ids:

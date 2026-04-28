@@ -22,11 +22,12 @@ logger = logging.getLogger("worker")
 
 class ExpertWorker:
     def __init__(self, worker_id: str, http_port: int, tcp_port: int, bind_host: str = "127.0.0.1",
-                 experts_dir: str = "", dtype: torch.dtype = torch.float32):
+                 advertise_host: str = "", experts_dir: str = "", dtype: torch.dtype = torch.float32):
         self.worker_id = worker_id
         self.http_port = http_port
         self.tcp_port = tcp_port
         self.bind_host = bind_host
+        self.advertise_host = advertise_host or bind_host
         self.experts_dir = experts_dir
         self.dtype = dtype
         self.master_url: Optional[str] = None
@@ -40,7 +41,7 @@ class ExpertWorker:
             return
         body = {
             "worker_id": self.worker_id,
-            "host": self.bind_host,
+            "host": self.advertise_host,
             "http_port": self.http_port,
             "tcp_port": self.tcp_port,
             "experts_dir": self.experts_dir,
@@ -255,6 +256,8 @@ def main():
     parser.add_argument("--http-port", type=int, default=8000, help="HTTP port")
     parser.add_argument("--tcp-port", type=int, default=9000, help="TCP port")
     parser.add_argument("--host", type=str, default="127.0.0.1", help="Bind host (default: 127.0.0.1)")
+    parser.add_argument("--advertise-host", type=str, default="",
+        help="Address Master uses to reach this worker (default: same as --host)")
     parser.add_argument("--master", type=str, default="", help="Master URL (for auto-register)")
     parser.add_argument("--experts-dir", type=str, default="", help="Directory containing expert .safetensors files")
     parser.add_argument("--expert-ids", type=str, default="", help="Comma-separated expert IDs to auto-load (e.g., '3,4,5,6')")
@@ -268,7 +271,7 @@ def main():
     dtype = dtype_map[args.dtype]
     worker_id = args.id or f"worker-{args.http_port}"
     worker = ExpertWorker(worker_id, args.http_port, args.tcp_port, bind_host=args.host,
-                         experts_dir=args.experts_dir, dtype=dtype)
+                         advertise_host=args.advertise_host, experts_dir=args.experts_dir, dtype=dtype)
 
     if args.experts_dir and args.expert_ids:
         expert_ids = [int(x) for x in args.expert_ids.split(",")]
