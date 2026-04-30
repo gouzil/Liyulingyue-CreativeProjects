@@ -261,7 +261,7 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--manifest", "-m", type=str,
                         default="output/splits/ERNIE-4.5-21B-A3B-PT-k6/manifest.json")
-    parser.add_argument("--prompt", "-p", type=str, default="今天天气真好，")
+    parser.add_argument("--prompt", "-p", type=str, default="What a nice day!")
     parser.add_argument("--max-tokens", "-t", type=int, default=20)
     args = parser.parse_args()
 

@@ -77,7 +77,22 @@ done
 
 echo "[v=2026-04-29T19:40:00] Step 6: Run inference"
 sleep 2
-python quick_test.py
+REQUEST_BODY='{"prompt":"What a nice day!","max_tokens":20}'
+response=$(curl -sS -X POST "http://127.0.0.1:5000/inference" \
+    -H "Content-Type: application/json; charset=utf-8" \
+    -H "Accept: application/json" \
+    --data-binary "$REQUEST_BODY" \
+    --max-time 600 -w "\n%{http_code}")
+http_code=$(printf '%s' "$response" | tail -n1)
+body=$(printf '%s' "$response" | sed '$d')
+if [ "$http_code" -ne 200 ]; then
+    echo "  FAIL: status=$http_code body=$body"
+    echo "[v=2026-04-29T19:40:00] Cleanup: kill master($MASTER_PID) worker($WORKER_PID)"
+    kill $MASTER_PID $WORKER_PID 2>/dev/null || true
+    exit 1
+fi
+
+echo "  OK: status=$http_code body=$body"
 
 echo "[v=2026-04-29T19:40:00] Cleanup: kill master($MASTER_PID) worker($WORKER_PID)"
 kill $MASTER_PID $WORKER_PID 2>/dev/null || true
