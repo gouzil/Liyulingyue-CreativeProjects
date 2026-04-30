@@ -141,19 +141,25 @@ class NexusMaster:
         x = x * torch.rsqrt(variance + self.rms_norm_eps)
         return (weight * x).to(input_dtype)
 
+    def _rotate_half(self, x: torch.Tensor) -> torch.Tensor:
+        """Rotates half the hidden dims of the input."""
+        x1 = x[..., : x.shape[-1] // 2]
+        x2 = x[..., x.shape[-1] // 2 :]
+        return torch.cat((-x2, x1), dim=-1)
+
     def _rope_compute(self, seq_len, device, position_offset=0):
         inv_freq = 1.0 / (self.rope_theta ** (torch.arange(0, self.head_dim, 2, dtype=torch.float32, device=device) / self.head_dim))
         t = torch.arange(position_offset, position_offset + seq_len, dtype=torch.float32, device=device)
         freqs = torch.outer(t, inv_freq)
-        return freqs.cos(), freqs.sin()
+        emb = torch.cat((freqs, freqs), dim=-1)
+        cos = emb.cos()
+        sin = emb.sin()
+        return cos, sin
 
     def _apply_rope(self, q, k, cos, sin):
-        x1 = q[..., : q.shape[-1] // 2]
-        x2 = q[..., q.shape[-1] // 2 :]
-        q_embed = torch.cat(((x1 * cos - x2 * sin), (x1 * sin + x2 * cos)), dim=-1)
-        x1 = k[..., : k.shape[-1] // 2]
-        x2 = k[..., k.shape[-1] // 2 :]
-        k_embed = torch.cat(((x1 * cos - x2 * sin), (x1 * sin + x2 * cos)), dim=-1)
+        """Applies Rotary Position Embedding to the query and key tensors."""
+        q_embed = (q * cos) + (self._rotate_half(q) * sin)
+        k_embed = (k * cos) + (self._rotate_half(k) * sin)
         return q_embed, k_embed
 
     def _attention(self, x, layer_id: int, use_cache: bool = False, position_offset: int = 0):
@@ -211,6 +217,18 @@ class NexusMaster:
     def _gate_forward(self, x, layer_id: int):
         gate_weight = self.weights[f"model.layers.{layer_id}.mlp.gate.weight"]
         return F.linear(x.float(), gate_weight.float())
+
+    def _gate_with_bias(self, x, layer_id: int):
+        gate_weight = self.weights[f"model.layers.{layer_id}.mlp.gate.weight"]
+        router_logits = F.linear(x.float(), gate_weight.float())
+        routing_weights = F.softmax(router_logits, dim=-1, dtype=torch.float)
+        
+        # Add e_score_correction_bias
+        bias_key = f"model.layers.{layer_id}.mlp.moe_statics.e_score_correction_bias"
+        if bias_key in self.weights:
+            routing_weights = routing_weights + self.weights[bias_key]
+        
+        return router_logits, routing_weights
 
     def _moe_expert_local(self, x, layer_id: int, expert_id: int):
         key = (layer_id, expert_id)
@@ -285,23 +303,36 @@ class NexusMaster:
     async def _moe_layer(self, x_norm: torch.Tensor, layer_id: int) -> torch.Tensor:
         moe_out = torch.zeros_like(x_norm)
         for _ in range(self.num_shared_experts):
-            moe_out = moe_out + self._shared_expert(x_norm, layer_id)
+            se_out = self._shared_expert(x_norm, layer_id)
+            if layer_id == 1:
+                logger.info(f"[DBG] L{layer_id} shared_expert: sum={se_out.sum().item():.6f}, first5={se_out[0, 0, :5].tolist()}")
+            moe_out = moe_out + se_out
 
-        gate_logits = self._gate_forward(x_norm, layer_id)
-        bsz, seq_len, num_experts = gate_logits.shape
-
-        gate_flat = gate_logits.view(-1, num_experts)
-        routing_probs = F.softmax(gate_flat, dim=-1)
-        topk_probs, topk_indices = torch.topk(routing_probs, k=min(self.moe_k, num_experts), dim=-1)
-        num_tokens = gate_flat.shape[0]
-        K = topk_indices.shape[1]
+        # Routing
+        gate_weight = self.weights[f"model.layers.{layer_id}.mlp.gate.weight"]
+        router_logits = F.linear(x_norm.float(), gate_weight.float())
+        routing_weights = F.softmax(router_logits, dim=-1, dtype=torch.float)
+        
+        # Add bias for selection only
+        bias_key = f"model.layers.{layer_id}.mlp.moe_statics.e_score_correction_bias"
+        routing_for_selection = routing_weights
+        if bias_key in self.weights:
+            routing_for_selection = routing_weights + self.weights[bias_key]
+        
+        bsz, seq_len, num_experts = router_logits.shape
+        K = min(self.moe_k, num_experts)
+        
+        routing_flat = routing_weights.view(-1, num_experts)
+        selection_flat = routing_for_selection.view(-1, num_experts)
+        num_tokens = routing_flat.shape[0]
 
         routing = self._build_routing_table()
 
         shown = min(2, num_tokens)
-        orig_list = [topk_indices[t][:K].tolist() for t in range(shown)]
+        # Log first token's top-k selection
+        topk_sel = torch.topk(selection_flat[:shown], k=K, dim=-1)
         logger.info(f"  Layer {layer_id}: _local_routing={len(self._local_routing)}, workers={list(self.workers.keys())}")
-        logger.info(f"  Layer {layer_id}: first {shown} token(s) gate picks: {orig_list}")
+        logger.info(f"  Layer {layer_id}: first {shown} token(s) gate picks: {topk_sel.indices.tolist()}")
 
         tasks = {}
         local_exec = 0
@@ -309,10 +340,9 @@ class NexusMaster:
         fallback_total = 0
 
         for tok_idx in range(num_tokens):
-            tok_probs = routing_probs[tok_idx]
-            tok_topk_indices = topk_indices[tok_idx]
-            tok_topk_probs = topk_probs[tok_idx]
-            sorted_idx_by_prob = torch.argsort(tok_probs, descending=True)
+            sel_scores = selection_flat[tok_idx]
+            tok_weights = routing_flat[tok_idx]
+            sorted_idx_by_prob = torch.argsort(sel_scores, descending=True)
 
             selected = []
             used_expert_ids = set()
@@ -321,10 +351,10 @@ class NexusMaster:
                     break
                 key = (layer_id, eid)
                 if key in self._local_routing:
-                    selected.append((eid, "local", tok_probs[eid].item()))
+                    selected.append((eid, "local", tok_weights[eid].item()))
                     used_expert_ids.add(eid)
                 elif key in routing:
-                    selected.append((eid, "dispatch", tok_probs[eid].item()))
+                    selected.append((eid, "dispatch", tok_weights[eid].item()))
                     used_expert_ids.add(eid)
 
             if len(selected) < K:
@@ -335,25 +365,31 @@ class NexusMaster:
                         continue
                     key = (layer_id, eid)
                     if key in self._local_routing:
-                        selected.append((eid, "fallback_local", tok_probs[eid].item()))
+                        selected.append((eid, "fallback_local", tok_weights[eid].item()))
                         used_expert_ids.add(eid)
                         fallback_total += 1
                     elif key in routing:
-                        selected.append((eid, "fallback_dispatch", tok_probs[eid].item()))
+                        selected.append((eid, "fallback_dispatch", tok_weights[eid].item()))
                         used_expert_ids.add(eid)
                         fallback_total += 1
 
+            # Normalize with selected experts' original weights
+            selected_probs = torch.tensor([prob for _, _, prob in selected])
+            norm = selected_probs.sum().clamp(min=1e-9)
 
-            norm = tok_topk_probs.sum().clamp(min=1e-9)
+            if tok_idx == 0 and layer_id == 1:
+                logger.info(f"[DBG] L{layer_id} tok {tok_idx}: selected={[(e, s) for e, s, _ in selected]}, weights={[round(p/norm.item(), 4) for _, _, p in selected]}")
 
             for rank, (expert_id, source, prob) in enumerate(selected):
                 weight = prob / norm
 
                 key = (layer_id, expert_id)
                 if source in ("local", "fallback_local"):
-                    e_out = self._moe_expert_local(x_norm, layer_id, expert_id)
+                    e_out = self._moe_expert_local(x_norm[:, [tok_idx], :], layer_id, expert_id)
                     if e_out is not None:
-                        moe_out = moe_out + e_out * weight
+                        if tok_idx == 0 and layer_id == 1:
+                            logger.info(f"[DBG]   expert {expert_id} ({source}): sum={e_out.sum().item():.6f}, first5={e_out[0, 0, :5].tolist()}")
+                        moe_out[:, [tok_idx], :] = moe_out[:, [tok_idx], :] + e_out * weight
                         local_exec += 1
                 else:
                     worker = routing[key]
@@ -369,7 +405,10 @@ class NexusMaster:
             for (tok_idx, rank), result in zip(tasks.keys(), results):
                 if isinstance(result, torch.Tensor):
                     weight = tasks[(tok_idx, rank)][2]
-                    moe_out = moe_out + result * weight
+                    expert_id = tasks[(tok_idx, rank)][0]
+                    if tok_idx == 0 and layer_id == 1:
+                        logger.info(f"[DBG]   expert {expert_id} (dispatch): sum={result.sum().item():.6f}, first5={result[0, 0, :5].tolist()}")
+                    moe_out[:, [tok_idx], :] = moe_out[:, [tok_idx], :] + result * weight
                 else:
                     logger.error(f"Expert {tasks[(tok_idx, rank)][0]} failed: {result}")
 
@@ -379,7 +418,8 @@ class NexusMaster:
 
     async def _transformer_layer(self, x, layer_id: int, use_cache: bool = False, position_offset: int = 0):
         x_norm = self._rms_norm(x, self.weights[f"model.layers.{layer_id}.input_layernorm.weight"])
-        x = x + self._attention(x_norm, layer_id, use_cache, position_offset)
+        attn_out = self._attention(x_norm, layer_id, use_cache, position_offset)
+        x = x + attn_out
 
         x_norm = self._rms_norm(x, self.weights[f"model.layers.{layer_id}.post_attention_layernorm.weight"])
         if layer_id == 0:
@@ -387,6 +427,8 @@ class NexusMaster:
         else:
             moe_out = await self._moe_layer(x_norm, layer_id)
             x = x + moe_out
+        if layer_id < 3:
+            logger.info(f"[DBG] layer {layer_id} out: sum={x.sum().item():.6f}, first5={x[0, 0, :5].tolist()}")
         return x
 
     async def forward(self, input_ids: torch.Tensor, use_cache: bool = False, position_offset: int = 0) -> torch.Tensor:
@@ -402,22 +444,25 @@ class NexusMaster:
             self._past_keys.clear()
             self._past_values.clear()
         self._position_offset = 0
-        generated = []
-        logits = await self.forward(input_ids, use_cache=True, position_offset=0)
-        self._position_offset += input_ids.shape[1]
-        next_token = logits[0, -1].argmax().item()
-        generated.append(next_token)
-        if next_token == eos_token_id:
-            return generated
-        new_ids = torch.tensor([[next_token]], dtype=input_ids.dtype)
-        for step in range(max_new_tokens - 1):
-            logits = await self.forward(new_ids, use_cache=True, position_offset=self._position_offset)
-            self._position_offset += 1
+        generated = input_ids[0].tolist()
+
+        for step in range(max_new_tokens):
+            if self.kv_cache:
+                if step == 0:
+                    logits = await self.forward(input_ids, use_cache=True, position_offset=0)
+                else:
+                    new_id = torch.tensor([[generated[-1]]], dtype=input_ids.dtype)
+                    logits = await self.forward(new_id, use_cache=True, position_offset=self._position_offset)
+                self._position_offset += input_ids.shape[1] if step == 0 else 1
+            else:
+                full_ids = torch.tensor([generated], dtype=input_ids.dtype)
+                logits = await self.forward(full_ids, use_cache=False, position_offset=0)
+
             next_token = logits[0, -1].argmax().item()
             generated.append(next_token)
             if next_token == eos_token_id:
                 break
-            new_ids = torch.tensor([[next_token]], dtype=input_ids.dtype)
+
         return generated
 
     async def _http_handler_worker_register(self, request: web.Request) -> web.Response:

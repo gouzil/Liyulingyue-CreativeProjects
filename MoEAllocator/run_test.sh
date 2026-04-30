@@ -9,7 +9,7 @@ LOG_DIR="logs"
 MASTER_LOG="$LOG_DIR/master.log"
 WORKER_LOG="$LOG_DIR/worker.log"
 DTYPE="float32"
-KV_CACHE="false"
+KV_CACHE="true"
 
 echo "[v=2026-04-29T19:40:00] Step 1: Kill old processes and remove logs"
 ps aux | grep "nexus" | grep -v grep | awk '{print $2}' | xargs kill -9 2>/dev/null || true

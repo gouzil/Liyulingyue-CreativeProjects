@@ -171,6 +171,18 @@ class MiniMoE:
         gate_weight = self.weights[f"model.layers.{layer_id}.mlp.gate.weight"]
         return F.linear(x.float(), gate_weight.float())
 
+    def _gate_with_bias(self, x: torch.Tensor, layer_id: int) -> tuple[torch.Tensor, torch.Tensor]:
+        gate_weight = self.weights[f"model.layers.{layer_id}.mlp.gate.weight"]
+        router_logits = F.linear(x.float(), gate_weight.float())
+        routing_weights = F.softmax(router_logits, dim=-1, dtype=torch.float)
+        
+        # Add e_score_correction_bias
+        bias_key = f"model.layers.{layer_id}.mlp.moe_statics.e_score_correction_bias"
+        if bias_key in self.weights:
+            routing_weights = routing_weights + self.weights[bias_key]
+        
+        return router_logits, routing_weights
+
     def _moe_expert_local(self, x: torch.Tensor, layer_id: int, expert_id: int) -> torch.Tensor | None:
         key = (layer_id, expert_id)
         if key not in self.expert_weights:
@@ -201,41 +213,74 @@ class MiniMoE:
         # Shared experts
         moe_out = torch.zeros_like(x_norm)
         for _ in range(self.num_shared_experts):
-            moe_out = moe_out + self._shared_expert(x_norm, layer_id)
+            se_out = self._shared_expert(x_norm, layer_id)
+            if layer_id == 1:
+                print(f"[DBG] L{layer_id} shared_expert: sum={se_out.sum().item():.6f}, first5={se_out[0, 0, :5].tolist()}")
+            moe_out = moe_out + se_out
 
-        # Routing - softmax on all 64 experts, take head-k
-        gate_logits = self._gate_forward(x_norm, layer_id)
-        bsz, seq_len, num_experts = gate_logits.shape
-
-        gate_flat = gate_logits.view(-1, num_experts)
-        routing_probs = F.softmax(gate_flat, dim=-1)
+        # Routing
+        gate_weight = self.weights[f"model.layers.{layer_id}.mlp.gate.weight"]
+        router_logits = F.linear(x_norm.float(), gate_weight.float())
+        routing_weights = F.softmax(router_logits, dim=-1, dtype=torch.float)
         
-        # Take head-k experts and renormalize
-        head_k = min(self.moe_k, len(self.expert_ids))
-        head_probs = routing_probs[:, :head_k]
-        norm = head_probs.sum(dim=-1, keepdim=True).clamp(min=1e-9)
-        weights = head_probs / norm
-
-        # Apply head-k experts
+        # Add bias for selection only
+        bias_key = f"model.layers.{layer_id}.mlp.moe_statics.e_score_correction_bias"
+        routing_for_selection = routing_weights
+        if bias_key in self.weights:
+            routing_for_selection = routing_weights + self.weights[bias_key]
+        
+        bsz, seq_len, num_experts = router_logits.shape
+        K = min(self.moe_k, num_experts)
+        
+        # Select top-k from available experts
         x_flat = x_norm.view(-1, x_norm.shape[-1])
         moe_flat = moe_out.view(-1, moe_out.shape[-1])
-        for expert_idx in range(head_k):
-            eid = self.expert_ids[expert_idx]
-            expert_weight = weights[:, expert_idx]
-            e_out = self._moe_expert_local(x_flat, layer_id, eid)
-            if e_out is not None:
-                moe_flat += e_out * expert_weight.unsqueeze(-1)
+        routing_flat = routing_weights.view(-1, num_experts)
+        selection_flat = routing_for_selection.view(-1, num_experts)
+        
+        for tok_idx in range(x_flat.shape[0]):
+            sel_scores = selection_flat[tok_idx]
+            sorted_idx = torch.argsort(sel_scores, descending=True)
+            
+            # Select K available experts
+            selected = []
+            for eid in sorted_idx.tolist():
+                if len(selected) >= K:
+                    break
+                key = (layer_id, eid)
+                if key in self.expert_weights:
+                    selected.append(eid)
+            
+            # Get weights from original routing_weights and renormalize
+            if selected:
+                orig_weights = torch.tensor([routing_flat[tok_idx, eid].item() for eid in selected])
+                norm = orig_weights.sum().clamp(min=1e-9)
+                weights = orig_weights / norm
+
+                if tok_idx == 0 and layer_id == 1:
+                    print(f"[DBG] L{layer_id} tok {tok_idx}: selected={selected}, weights={[round(w.item(), 4) for w in weights]}")
+                
+                for idx, eid in enumerate(selected):
+                    e_out = self._moe_expert_local(x_flat[tok_idx:tok_idx+1], layer_id, eid)
+                    if e_out is not None:
+                        if tok_idx == 0 and layer_id == 1:
+                            print(f"[DBG]   expert {eid}: sum={e_out.sum().item():.6f}, first5={e_out[0, :5].tolist()}")
+                        moe_flat[tok_idx:tok_idx+1] += e_out * weights[idx]
 
         return moe_out
 
     def _transformer_layer(self, x: torch.Tensor, layer_id: int) -> torch.Tensor:
         x_norm = self._rms_norm(x, self.weights[f"model.layers.{layer_id}.input_layernorm.weight"])
-        x = x + self._attention(x_norm, layer_id)
+        attn_out = self._attention(x_norm, layer_id)
+        x = x + attn_out
         x_norm = self._rms_norm(x, self.weights[f"model.layers.{layer_id}.post_attention_layernorm.weight"])
         if layer_id == 0:
             x = x + self._standard_mlp(x_norm, layer_id)
         else:
-            x = x + self._moe_layer(x_norm, layer_id)
+            moe_out = self._moe_layer(x_norm, layer_id)
+            x = x + moe_out
+        if layer_id < 3:
+            print(f"[DBG] layer {layer_id} out: sum={x.sum().item():.6f}, first5={x[0, 0, :5].tolist()}")
         return x
 
     def forward(self, input_ids: torch.Tensor) -> torch.Tensor:
