@@ -8,7 +8,10 @@ pub struct AppConfig {
     pub api_key: String,
     pub enable_cache: bool,
     pub cache_limit: u32,
+    #[serde(default = "default_auto_refresh_hours")]
     pub auto_refresh_hours: u32,
+    #[serde(default = "default_auto_refresh_minutes")]
+    pub auto_refresh_minutes: u32,
     pub auto_prompt: String,
     pub gallery_path: String,
     // Prompt Enhance (文生文) 配置
@@ -26,6 +29,14 @@ pub struct AppConfig {
 
 fn default_image_size() -> String {
     "1024x1024".to_string()
+}
+
+fn default_auto_refresh_hours() -> u32 {
+    24
+}
+
+fn default_auto_refresh_minutes() -> u32 {
+    24 * 60
 }
 
 fn default_ui_mode() -> String {
@@ -54,7 +65,7 @@ pub enum AppEvent {
     Saved(String),
     Error(String),
     SwitchMode(String),
-    GalleryLoaded(Vec<serde_json::Value>),
+    GalleryLoaded(serde_json::Value),
     ToggleDrawing(bool),
     PromptEnhanced(String),
 }

@@ -1,18 +1,26 @@
 import React from 'react';
 
 interface TasksPageProps {
-  autoRefreshHours: number;
-  setAutoRefreshHours: (v: number) => void;
+  autoRefreshMinutes: number;
+  setAutoRefreshMinutes: (v: number) => void;
   autoPrompt: string;
   setAutoPrompt: (v: string) => void;
   handleSaveKey: () => void;
 }
 
 const TasksPage: React.FC<TasksPageProps> = ({
-  autoRefreshHours, setAutoRefreshHours,
+  autoRefreshMinutes, setAutoRefreshMinutes,
   autoPrompt, setAutoPrompt,
   handleSaveKey
 }) => {
+  const formatRefresh = (minutes: number) => {
+    if (minutes < 60) return `${minutes} 分钟`;
+    if (minutes % 60 === 0) return `${minutes / 60} 小时`;
+    const h = Math.floor(minutes / 60);
+    const m = minutes % 60;
+    return `${h} 小时 ${m} 分钟`;
+  };
+
   return (
     <div className="space-y-10 animate-in fade-in slide-in-from-bottom-6 duration-700">
       <div className="bg-white border border-slate-200 rounded-[2.5rem] p-10 shadow-xl relative overflow-hidden group">
@@ -27,42 +35,55 @@ const TasksPage: React.FC<TasksPageProps> = ({
         <div className="space-y-10">
           <div className="flex items-center justify-between p-8 bg-slate-50 rounded-[2rem] border border-slate-100">
             <div className="flex items-center gap-6">
-              <div className={`p-4 rounded-2xl shadow-lg transition-all duration-500 ${autoRefreshHours > 0 ? "bg-blue-600 text-white" : "bg-white text-slate-400 border border-slate-200"}`}>
+              <div className={`p-4 rounded-2xl shadow-lg transition-all duration-500 ${autoRefreshMinutes > 0 ? "bg-blue-600 text-white" : "bg-white text-slate-400 border border-slate-200"}`}>
                 <svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10" /><polyline points="12 6 12 12 16 14" /></svg>
               </div>
               <div>
                 <h3 className="text-xl font-black text-slate-900">自动刷新壁纸</h3>
-                <p className="text-sm text-slate-400 font-bold uppercase tracking-wider mt-1">{autoRefreshHours > 0 ? "已开启" : "已禁用"}</p>
+                <p className="text-sm text-slate-400 font-bold uppercase tracking-wider mt-1">{autoRefreshMinutes > 0 ? "已开启" : "已禁用"}</p>
               </div>
             </div>
             <button
               onClick={() => {
-                if (autoRefreshHours > 0) setAutoRefreshHours(0);
-                else setAutoRefreshHours(4);
+                if (autoRefreshMinutes > 0) setAutoRefreshMinutes(0);
+                else setAutoRefreshMinutes(60);
               }}
-              className={`w-16 h-9 rounded-full transition-all duration-500 relative ${autoRefreshHours > 0 ? 'bg-blue-600 shadow-xl shadow-blue-200' : 'bg-slate-200'}`}
+              className={`w-16 h-9 rounded-full transition-all duration-500 relative ${autoRefreshMinutes > 0 ? 'bg-blue-600 shadow-xl shadow-blue-200' : 'bg-slate-200'}`}
             >
-              <div className={`absolute top-1.5 w-6 h-6 bg-white rounded-full transition-all duration-500 shadow-sm ${autoRefreshHours > 0 ? 'left-8' : 'left-1.5'}`}></div>
+              <div className={`absolute top-1.5 w-6 h-6 bg-white rounded-full transition-all duration-500 shadow-sm ${autoRefreshMinutes > 0 ? 'left-8' : 'left-1.5'}`}></div>
             </button>
           </div>
 
-          {autoRefreshHours > 0 && (
+          {autoRefreshMinutes > 0 && (
             <div className="grid grid-cols-1 md:grid-cols-2 gap-10 animate-in fade-in slide-in-from-top-4 duration-500">
               <div className="space-y-6 bg-white border border-slate-100 p-8 rounded-[2rem] shadow-sm">
                 <label className="text-xs font-black text-slate-400 uppercase flex justify-between tracking-[0.2em] mb-4">
                   <span>刷新间隔时间</span>
-                  <span className="text-blue-600 font-black">{autoRefreshHours} 小时</span>
+                  <span className="text-blue-600 font-black">{formatRefresh(autoRefreshMinutes)}</span>
                 </label>
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className="text-[10px] text-slate-400 font-black uppercase tracking-wider">测试快捷</span>
+                  {[1, 3, 5].map((m) => (
+                    <button
+                      key={m}
+                      onClick={() => setAutoRefreshMinutes(m)}
+                      className={`px-2.5 py-1 rounded-lg text-[11px] font-bold border transition-colors ${autoRefreshMinutes === m ? 'bg-blue-600 text-white border-blue-600' : 'bg-white text-slate-500 border-slate-200 hover:border-blue-300 hover:text-blue-600'}`}
+                    >
+                      {m} 分钟
+                    </button>
+                  ))}
+                </div>
                 <input
-                  type="range" min="1" max="72" step="1"
-                  value={autoRefreshHours}
-                  onChange={(e) => setAutoRefreshHours(parseInt(e.target.value))}
+                  type="range" min="15" max="4320" step="15"
+                  value={autoRefreshMinutes}
+                  onChange={(e) => setAutoRefreshMinutes(parseInt(e.target.value))}
                   className="w-full h-2 bg-slate-100 rounded-lg appearance-none cursor-pointer accent-blue-600"
                 />
                 <div className="flex justify-between text-[10px] text-slate-300 font-black">
-                  <span>1小时</span>
+                  <span>15分钟</span>
                   <span>72小时</span>
                 </div>
+                <p className="text-[10px] text-slate-400 font-medium italic">滑杆用于正式配置(15分钟步进)，测试可用上方分钟快捷按钮。</p>
               </div>
 
               <div className="space-y-6 bg-white border border-slate-100 p-8 rounded-[2rem] shadow-sm">

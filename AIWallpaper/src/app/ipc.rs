@@ -5,6 +5,48 @@ use crate::app::{AppConfig, IpcMessage, AppEvent};
 use crate::api;
 use crate::{export_image_dir, save_generated_image};
 
+/// 读取画廊目录第 page 页（从0开始），每页 page_size 张，返回分页 JSON
+fn load_gallery_page(gallery_dir: &std::path::Path, page: usize, page_size: usize) -> serde_json::Value {
+    let mut all_names: Vec<(String, std::path::PathBuf)> = Vec::new();
+    if let Ok(entries) = fs::read_dir(gallery_dir) {
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if path.is_file() {
+                let ext = path.extension().and_then(|e| e.to_str()).unwrap_or_default().to_lowercase();
+                if ["png", "jpg", "jpeg", "webp"].contains(&ext.as_str()) {
+                    let file_name = path.file_name().and_then(|n| n.to_str()).unwrap_or_default().to_string();
+                    all_names.push((file_name, path));
+                }
+            }
+        }
+    }
+    all_names.sort_by(|a, b| b.0.cmp(&a.0));
+    let total = all_names.len();
+    let start = page * page_size;
+    let mut images = Vec::new();
+    for (file_name, path) in all_names.into_iter().skip(start).take(page_size) {
+        let ext = path.extension().and_then(|e| e.to_str()).unwrap_or_default().to_lowercase();
+        if let Ok(bytes) = fs::read(&path) {
+            let b64 = base64::Engine::encode(&base64::engine::general_purpose::STANDARD, &bytes);
+            let mime = match ext.as_str() {
+                "jpg" | "jpeg" => "image/jpeg",
+                "webp" => "image/webp",
+                _ => "image/png",
+            };
+            images.push(serde_json::json!({
+                "name": file_name,
+                "data": format!("data:{};base64,{}", mime, b64)
+            }));
+        }
+    }
+    serde_json::json!({
+        "items": images,
+        "total": total,
+        "page": page,
+        "page_size": page_size
+    })
+}
+
 pub struct IpcContext {
     pub config: Arc<Mutex<AppConfig>>,
     pub proxy: EventLoopProxy<AppEvent>,
@@ -121,12 +163,37 @@ pub async fn handle_message(msg_raw: &str, ctx: &IpcContext) {
                 let proxy = ctx.proxy.clone();
                 let app_data_dir = ctx.app_data_dir.clone();
                 let cfg = ctx.config.lock().unwrap().clone();
-                let base64_data = msg.data.clone().unwrap_or_default();
-                let set_as_wallpaper = msg.set_as_wallpaper.unwrap_or(true); // 默认设为壁纸
+                
+                // 打印调试信息，确认收到的消息内容
+                println!("收到 save_edited_image 指令");
+                
+                let (base64_data, set_as_wallpaper) = if let Some(d) = msg.data.clone() {
+                    (d, msg.set_as_wallpaper.unwrap_or(true))
+                } else if !msg.value.is_empty() {
+                    // 兼容前端 sendIpc: 对象参数被 JSON.stringify 后放入 value
+                    // value 可能是纯 base64 字符串，也可能是 {"data":"...","set_as_wallpaper":true}
+                    if let Ok(v) = serde_json::from_str::<serde_json::Value>(&msg.value) {
+                        let data = v
+                            .get("data")
+                            .and_then(|x| x.as_str())
+                            .unwrap_or("")
+                            .to_string();
+                        let as_wallpaper = v
+                            .get("set_as_wallpaper")
+                            .and_then(|x| x.as_bool())
+                            .or(msg.set_as_wallpaper)
+                            .unwrap_or(true);
+                        (data, as_wallpaper)
+                    } else {
+                        (msg.value.clone(), msg.set_as_wallpaper.unwrap_or(true))
+                    }
+                } else {
+                    ("".to_string(), true)
+                };
                 
                 tokio::spawn(async move {
                     if base64_data.is_empty() {
-                        let _ = proxy.send_event(AppEvent::Error("没有接收到图片数据".into()));
+                        let _ = proxy.send_event(AppEvent::Error("保存失败：没有接收到图片数据".into()));
                         return;
                     }
 
@@ -220,34 +287,18 @@ pub async fn handle_message(msg_raw: &str, ctx: &IpcContext) {
                 let cfg = ctx.config.lock().unwrap().clone();
                 let app_data_dir_gallery = ctx.app_data_dir.clone();
                 let proxy_gallery = ctx.proxy.clone();
+                // 解析分页参数，默认 page=0, page_size=20
+                let (page, page_size) = if let Ok(v) = serde_json::from_str::<serde_json::Value>(&msg.value) {
+                    let p = v["page"].as_u64().unwrap_or(0) as usize;
+                    let ps = v["page_size"].as_u64().unwrap_or(20) as usize;
+                    (p, ps.max(1).min(100))
+                } else {
+                    (0usize, 20usize)
+                };
                 tokio::spawn(async move {
                     let gallery_dir = export_image_dir(&app_data_dir_gallery, &cfg);
-                    let mut images = Vec::new();
-                    if let Ok(entries) = fs::read_dir(gallery_dir) {
-                        for entry in entries.flatten() {
-                            let path = entry.path();
-                            if path.is_file() {
-                                let ext = path.extension().and_then(|e| e.to_str()).unwrap_or_default().to_lowercase();
-                                if ["png", "jpg", "jpeg", "webp"].contains(&ext.as_str()) {
-                                    let file_name = path.file_name().and_then(|n| n.to_str()).unwrap_or_default().to_string();
-                                    if let Ok(bytes) = fs::read(&path) {
-                                        let b64 = base64::Engine::encode(&base64::engine::general_purpose::STANDARD, &bytes);
-                                        let mime = match ext.as_str() {
-                                            "jpg" | "jpeg" => "image/jpeg",
-                                            "webp" => "image/webp",
-                                            _ => "image/png",
-                                        };
-                                        images.push(serde_json::json!({
-                                            "name": file_name,
-                                            "data": format!("data:{};base64,{}", mime, b64)
-                                        }));
-                                    }
-                                }
-                            }
-                        }
-                    }
-                    images.sort_by(|a, b| b["name"].as_str().cmp(&a["name"].as_str())); 
-                    let _ = proxy_gallery.send_event(AppEvent::GalleryLoaded(images));
+                    let payload = load_gallery_page(&gallery_dir, page, page_size);
+                    let _ = proxy_gallery.send_event(AppEvent::GalleryLoaded(payload));
                 });
             }
             "set_wallpaper" => {
@@ -286,25 +337,8 @@ pub async fn handle_message(msg_raw: &str, ctx: &IpcContext) {
                     let gallery_dir = export_image_dir(&app_data_dir_del, &cfg);
                     let img_path = gallery_dir.join(&file_name);
                     let _ = fs::remove_file(&img_path);
-                    // 删除后重新加载画廊
-                    let mut images = Vec::new();
-                    if let Ok(entries) = fs::read_dir(&gallery_dir) {
-                        for entry in entries.flatten() {
-                            let path = entry.path();
-                            if path.is_file() && path.extension().is_some_and(|ext| ext == "png") {
-                                let fname = path.file_name().and_then(|n| n.to_str()).unwrap_or_default().to_string();
-                                if let Ok(bytes) = fs::read(&path) {
-                                    let b64 = base64::Engine::encode(&base64::engine::general_purpose::STANDARD, &bytes);
-                                    images.push(serde_json::json!({
-                                        "name": fname,
-                                        "data": format!("data:image/png;base64,{}", b64)
-                                    }));
-                                }
-                            }
-                        }
-                    }
-                    images.sort_by(|a, b| b["name"].as_str().cmp(&a["name"].as_str()));
-                    let _ = proxy_del.send_event(AppEvent::GalleryLoaded(images));
+                    let payload = load_gallery_page(&gallery_dir, 0, 20);
+                    let _ = proxy_del.send_event(AppEvent::GalleryLoaded(payload));
                 });
             }
             "delete_images" => {
@@ -318,25 +352,8 @@ pub async fn handle_message(msg_raw: &str, ctx: &IpcContext) {
                         for fname in file_list.iter() {
                             let _ = fs::remove_file(gallery_dir.join(fname));
                         }
-                        // 删除后重新加载画廊
-                        let mut images = Vec::new();
-                        if let Ok(entries) = fs::read_dir(gallery_dir) {
-                            for entry in entries.flatten() {
-                                let path = entry.path();
-                                if path.is_file() && path.extension().is_some_and(|ext| ext == "png") {
-                                    let fname = path.file_name().and_then(|n| n.to_str()).unwrap_or_default().to_string();
-                                    if let Ok(bytes) = fs::read(&path) {
-                                        let b64 = base64::Engine::encode(&base64::engine::general_purpose::STANDARD, &bytes);
-                                        images.push(serde_json::json!({
-                                            "name": fname,
-                                            "data": format!("data:image/png;base64,{}", b64)
-                                        }));
-                                    }
-                                }
-                            }
-                        }
-                        images.sort_by(|a, b| b["name"].as_str().cmp(&a["name"].as_str()));
-                        let _ = proxy_del.send_event(AppEvent::GalleryLoaded(images));
+                        let payload = load_gallery_page(&gallery_dir, 0, 20);
+                        let _ = proxy_del.send_event(AppEvent::GalleryLoaded(payload));
                     });
                 } else {
                     eprintln!("delete_images payload parse error: {}", msg.value);

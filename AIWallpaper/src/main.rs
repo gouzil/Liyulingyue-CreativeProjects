@@ -138,13 +138,15 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     std::env::set_var("WEBVIEW2_USER_DATA_FOLDER", &webview2_data_dir);
 
     let config_path = app_data_dir.join("config.json");
-    let initial_config = if let Ok(content) = fs::read_to_string(&config_path) {
-        serde_json::from_str::<AppConfig>(&content)
+    let mut initial_config = if let Ok(content) = fs::read_to_string(&config_path) {
+        let has_minutes_field = content.contains("\"auto_refresh_minutes\"");
+        let mut cfg = serde_json::from_str::<AppConfig>(&content)
             .unwrap_or(AppConfig { 
                 api_key: "".to_string(),
                 enable_cache: false,
                 cache_limit: 100,
                 auto_refresh_hours: 24,
+                auto_refresh_minutes: 24 * 60,
                 auto_prompt: "Cyberpunk city, neon lights, 8k resolution".to_string(),
                 gallery_path: "".to_string(),
                 image_size: "auto".to_string(),
@@ -152,13 +154,19 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 pe_key: "".to_string(),
                 pe_model: "".to_string(),
                 ui_mode: "lite".to_string(),
-            })
+            });
+
+        if !has_minutes_field {
+            cfg.auto_refresh_minutes = cfg.auto_refresh_hours.saturating_mul(60);
+        }
+        cfg
     } else {
         AppConfig { 
             api_key: "".to_string(),
             enable_cache: false,
             cache_limit: 100,
             auto_refresh_hours: 24,
+            auto_refresh_minutes: 24 * 60,
             auto_prompt: "Cyberpunk city, neon lights, 8k resolution".to_string(),
             gallery_path: "".to_string(),
             image_size: "auto".to_string(),
@@ -168,6 +176,16 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             ui_mode: "lite".to_string(),
         }
     };
+
+    if initial_config.auto_refresh_minutes > 0 {
+        if initial_config.auto_refresh_minutes >= 15 {
+            initial_config.auto_refresh_minutes = std::cmp::max(15, ((initial_config.auto_refresh_minutes + 14) / 15) * 15);
+        } else {
+            // 保留测试场景下的分钟级刷新(1~14 分钟)
+            initial_config.auto_refresh_minutes = std::cmp::max(1, initial_config.auto_refresh_minutes);
+        }
+    }
+    initial_config.auto_refresh_hours = initial_config.auto_refresh_minutes / 60;
 
     // 从 config 读取上次使用的模式，非法值回退为 lite
     let default_window = if initial_config.ui_mode == "pro" {
@@ -583,10 +601,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                         let _ = control_webview.evaluate_script(&js);
                         let _ = pro_webview.evaluate_script(&js);
                     }
-                    AppEvent::GalleryLoaded(images) => {
+                    AppEvent::GalleryLoaded(payload) => {
                         let js = format!(
                             "if (window.onGalleryLoaded) {{ window.onGalleryLoaded({}) }}",
-                            serde_json::to_string(&images).unwrap()
+                            serde_json::to_string(&payload).unwrap()
                         );
                         let _ = pro_webview.evaluate_script(&js);
                     }

@@ -15,7 +15,7 @@ interface CreatePageProps {
   sendIpc: (cmd: string, arg?: any) => void;
   setActiveTab: (tab: string) => void;
   setShowViewer: (v: boolean) => void;
-  autoRefreshHours: number;
+  autoRefreshMinutes: number;
   peUrl: string;
   peKey: string;
   peModel: string;
@@ -25,7 +25,7 @@ interface CreatePageProps {
 const CreatePage: React.FC<CreatePageProps> = ({
   uiMode = 'pro', prompt, setPrompt, handleRandomPrompt, handleGenerate,
   isGenerating, isEnhancing, setIsEnhancing, statusMsg, previewUrl, sendIpc, setActiveTab,
-  setShowViewer, autoRefreshHours, peUrl, peKey, showMessage
+  setShowViewer, autoRefreshMinutes, peUrl, peKey, showMessage
 }) => {
   const [isImporting, setIsImporting] = React.useState(false);
   const [showEditor, setShowEditor] = useState(false);
@@ -34,6 +34,15 @@ const CreatePage: React.FC<CreatePageProps> = ({
     setShowEditor(false);
     // 通过 IPC 发送数据给 Rust 进行保存，默认仅保存到画廊
     sendIpc("save_edited_image", { data: base64Data, set_as_wallpaper: asWallpaper });
+  };
+
+  const formatRefreshInterval = (minutes: number) => {
+    if (minutes <= 0) return "";
+    if (minutes < 60) return `每 ${minutes} 分钟刷新一次`;
+    if (minutes % 60 === 0) return `每 ${minutes / 60} 小时刷新一次`;
+    const h = Math.floor(minutes / 60);
+    const m = minutes % 60;
+    return `每 ${h} 小时 ${m} 分钟刷新一次`;
   };
 
   if (uiMode === 'lite') {
@@ -234,21 +243,21 @@ const CreatePage: React.FC<CreatePageProps> = ({
             <button onClick={() => setActiveTab("tasks")} className="text-blue-600 text-[10px] font-black hover:underline uppercase tracking-tighter">前往配置</button>
           </div>
           <div className="space-y-4">
-            <div className={`flex items-center justify-between p-5 rounded-2xl border ${autoRefreshHours > 0 ? 'bg-blue-50 border-blue-100 border-l-4 border-l-blue-600' : 'bg-slate-50 border-slate-100 border-l-4 border-l-slate-300'}`}>
+            <div className={`flex items-center justify-between p-5 rounded-2xl border ${autoRefreshMinutes > 0 ? 'bg-blue-50 border-blue-100 border-l-4 border-l-blue-600' : 'bg-slate-50 border-slate-100 border-l-4 border-l-slate-300'}`}>
               <div className="flex items-center gap-4">
-                <div className={`p-2 rounded-lg shadow-sm ${autoRefreshHours > 0 ? 'bg-white text-blue-600' : 'bg-white text-slate-300'}`}>
+                <div className={`p-2 rounded-lg shadow-sm ${autoRefreshMinutes > 0 ? 'bg-white text-blue-600' : 'bg-white text-slate-300'}`}>
                   <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10" /><polyline points="12 6 12 12 16 14" /></svg>
                 </div>
                 <div>
-                  <div className={`text-sm font-bold ${autoRefreshHours > 0 ? 'text-slate-800' : 'text-slate-400'}`}>
-                    {autoRefreshHours > 0 ? '智能自动更新中' : '自动更新已关闭'}
+                  <div className={`text-sm font-bold ${autoRefreshMinutes > 0 ? 'text-slate-800' : 'text-slate-400'}`}>
+                    {autoRefreshMinutes > 0 ? '智能自动更新中' : '自动更新已关闭'}
                   </div>
                   <div className="text-[10px] text-slate-400 font-medium italic">
-                    {autoRefreshHours > 0 ? `每 ${autoRefreshHours} 小时刷新一次` : '前往自动化界面开启'}
+                    {autoRefreshMinutes > 0 ? formatRefreshInterval(autoRefreshMinutes) : '前往自动化界面开启'}
                   </div>
                 </div>
               </div>
-              {autoRefreshHours > 0 && (
+              {autoRefreshMinutes > 0 && (
                 <div className="h-1.5 w-12 bg-blue-200 rounded-full overflow-hidden">
                   <div className="h-full bg-blue-600 w-full animate-progress-fast"></div>
                 </div>

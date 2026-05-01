@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import Header from "./components/Header";
 import CreatePage from "./pages/CreatePage";
 import GalleryPage from "./pages/GalleryPage";
@@ -33,10 +33,13 @@ function App() {
   const [cacheLimit, setCacheLimit] = useState(100);
   const [galleryPath, setGalleryPath] = useState("");
   const [imageSize, setImageSize] = useState("auto");
-  const [autoRefreshHours, setAutoRefreshHours] = useState(24);
+  const [autoRefreshMinutes, setAutoRefreshMinutes] = useState(24 * 60);
   const [autoPrompt, setAutoPrompt] = useState("");
   const [previewUrl, setPreviewUrl] = useState("");
   const [galleryImages, setGalleryImages] = useState<any[]>([]);
+  const [galleryPage, setGalleryPage] = useState(0);
+  const [galleryTotal, setGalleryTotal] = useState(0);
+  const galleryPageSize = 20;
   const [showViewer, setShowViewer] = useState(false);
   const [viewerUrl, setViewerUrl] = useState("");
   const [message, setMessage] = useState("");
@@ -44,6 +47,7 @@ function App() {
   const [isGenerating, setIsGenerating] = useState(false);
   const [isEnhancing, setIsEnhancing] = useState(false);
   const [statusMsg, setStatusMsg] = useState("");
+  const isGeneratingRef = useRef(false);
 
   useEffect(() => {
     localStorage.setItem('ui-mode', uiMode);
@@ -72,7 +76,18 @@ function App() {
       }
       setEnableCache(config.enable_cache);
       setCacheLimit(config.cache_limit);
-      setAutoRefreshHours(config.auto_refresh_hours);
+      const rawMinutes = typeof config.auto_refresh_minutes === "number"
+        ? config.auto_refresh_minutes
+        : ((config.auto_refresh_hours || 0) * 60);
+      if (rawMinutes <= 0) {
+        setAutoRefreshMinutes(0);
+      } else if (rawMinutes < 15) {
+        // 允许测试场景使用分钟级(1~14 分钟)
+        setAutoRefreshMinutes(Math.max(1, rawMinutes));
+      } else {
+        const normalized = Math.max(15, Math.round(rawMinutes / 15) * 15);
+        setAutoRefreshMinutes(normalized);
+      }
       setAutoPrompt(config.auto_prompt || "");
       setGalleryPath(config.gallery_path || "");
       setImageSize(config.image_size || "auto");
@@ -93,7 +108,7 @@ function App() {
         }
         setPreviewUrl(imagePayload.previewUrl);
         // 生成成功后自动刷新画廊数据
-        sendIpc("get_gallery");
+        sendIpc("get_gallery", { page: 0, page_size: galleryPageSize });
         setTimeout(() => setStatusMsg(""), 3000);
       } else {
         const msg = "生成失败：" + (errorMsg || "未知错误");
@@ -116,8 +131,18 @@ function App() {
     };
 
     // @ts-ignore
-    window.onGalleryLoaded = (images: any[]) => {
-      setGalleryImages(images);
+    window.onGalleryLoaded = (payload: any) => {
+      // 支持分页格式 {items, total, page, page_size}
+      if (payload && Array.isArray(payload.items)) {
+        setGalleryImages(payload.items);
+        setGalleryTotal(payload.total ?? payload.items.length);
+        setGalleryPage(payload.page ?? 0);
+      } else if (Array.isArray(payload)) {
+        // 兼容旧格式
+        setGalleryImages(payload);
+        setGalleryTotal(payload.length);
+        setGalleryPage(0);
+      }
     };
 
     // @ts-ignore
@@ -166,22 +191,48 @@ function App() {
 
   useEffect(() => {
     if (activeTab === "gallery") {
-      sendIpc("get_gallery");
+      sendIpc("get_gallery", { page: galleryPage, page_size: galleryPageSize });
     }
-  }, [activeTab, sendIpc]);
+  }, [activeTab, galleryPage, sendIpc]);
 
-  const handleGenerate = () => {
-    if (!prompt.trim() || isGenerating) return;
+  useEffect(() => {
+    isGeneratingRef.current = isGenerating;
+  }, [isGenerating]);
+
+
+
+  const triggerGenerate = useCallback((promptText: string, isAuto: boolean = false) => {
+    const finalPrompt = promptText.trim();
+    if (!finalPrompt || isGeneratingRef.current) return;
+
     setIsGenerating(true);
-    setStatusMsg("正在构思画面...");
-    
-    // 发送生成指令，同时携带当前选定的 imageSize (可能是 auto 或具体分辨率)
+    setStatusMsg(isAuto ? "自动刷新触发生成中..." : "正在构思画面...");
+
     const payload = {
       type: "generate",
-      value: prompt,
+      value: finalPrompt,
       size: imageSize
     };
     (window as any).ipc?.postMessage(JSON.stringify(payload));
+  }, [imageSize]);
+
+  useEffect(() => {
+    if (autoRefreshMinutes <= 0) return;
+    if (!apiKey.trim()) return;
+
+    const intervalMs = autoRefreshMinutes * 60 * 1000;
+    const timer = window.setInterval(() => {
+      if (isGeneratingRef.current) return;
+      const plannedPrompt = autoPrompt.trim() || prompts[Math.floor(Math.random() * prompts.length)];
+      triggerGenerate(plannedPrompt, true);
+    }, intervalMs);
+
+    return () => window.clearInterval(timer);
+  }, [autoRefreshMinutes, autoPrompt, apiKey, triggerGenerate]);
+
+  const handleGenerate = () => {
+    if (!prompt.trim() || isGenerating) return;
+    triggerGenerate(prompt, false);
   };
 
   const showMessage = (msg: string, duration: number = 3000) => {
@@ -215,7 +266,8 @@ function App() {
       ui_mode: uiMode,
       enable_cache: enableCache,
       cache_limit: cacheLimit,
-      auto_refresh_hours: autoRefreshHours,
+      auto_refresh_minutes: autoRefreshMinutes,
+      auto_refresh_hours: Math.floor(autoRefreshMinutes / 60),
       auto_prompt: autoPrompt,
       gallery_path: galleryPath,
       image_size: imageSize,
@@ -254,7 +306,7 @@ function App() {
               if (v) setViewerUrl(previewUrl);
               setShowViewer(v);
             }}
-            autoRefreshHours={autoRefreshHours}
+              autoRefreshMinutes={autoRefreshMinutes}
           />
         )}
 
@@ -268,6 +320,13 @@ function App() {
             galleryImages={galleryImages} 
             sendIpc={sendIpc} 
             galleryPath={galleryPath} 
+            galleryPage={galleryPage}
+            galleryTotal={galleryTotal}
+            galleryPageSize={galleryPageSize}
+            onPageChange={(page) => {
+              setGalleryPage(page);
+              sendIpc("get_gallery", { page, page_size: galleryPageSize });
+            }} 
             onZoom={(url) => {
               setViewerUrl(url);
               setShowViewer(true);
@@ -308,8 +367,8 @@ function App() {
 
         {activeTab === "tasks" && (
           <TasksPage
-            autoRefreshHours={autoRefreshHours}
-            setAutoRefreshHours={setAutoRefreshHours}
+            autoRefreshMinutes={autoRefreshMinutes}
+            setAutoRefreshMinutes={setAutoRefreshMinutes}
             autoPrompt={autoPrompt}
             setAutoPrompt={setAutoPrompt}
             handleSaveKey={handleSaveKey}
@@ -341,7 +400,8 @@ function App() {
                 api_key: apiKey,
                 enable_cache: enableCache,
                 cache_limit: cacheLimit,
-                auto_refresh_hours: autoRefreshHours,
+                auto_refresh_minutes: autoRefreshMinutes,
+                auto_refresh_hours: Math.floor(autoRefreshMinutes / 60),
                 auto_prompt: autoPrompt,
                 gallery_path: galleryPath,
                 image_size: v,

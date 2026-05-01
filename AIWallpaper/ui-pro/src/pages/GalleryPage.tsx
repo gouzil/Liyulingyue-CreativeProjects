@@ -6,9 +6,13 @@ interface GalleryPageProps {
   galleryPath: string;
   onZoom: (url: string) => void;
   onEdit: (url: string) => void;
+  galleryPage: number;
+  galleryTotal: number;
+  galleryPageSize: number;
+  onPageChange: (page: number) => void;
 }
 
-const GalleryPage: React.FC<GalleryPageProps> = ({ galleryImages, sendIpc, galleryPath, onZoom, onEdit }) => {
+const GalleryPage: React.FC<GalleryPageProps> = ({ galleryImages, sendIpc, galleryPath, onZoom, onEdit, galleryPage, galleryTotal, galleryPageSize, onPageChange }) => {
   const displayPath = galleryPath || "Pictures/AIWallpaper";
   const [confirmDeleteName, setConfirmDeleteName] = useState<string | null>(null);
   const [applyingName, setApplyingName] = useState<string | null>(null);
@@ -59,7 +63,7 @@ const GalleryPage: React.FC<GalleryPageProps> = ({ galleryImages, sendIpc, galle
               {isRefreshing ? "刷新中..." : "刷新画廊"}
             </button>
             <span className="text-xs font-black text-blue-600 bg-blue-50 px-5 py-2.5 rounded-full border border-blue-100 uppercase tracking-widest">
-              {galleryImages.length} ITEMS
+              {galleryTotal} ITEMS
             </span>
           </div>
         </div>
@@ -184,9 +188,50 @@ const GalleryPage: React.FC<GalleryPageProps> = ({ galleryImages, sendIpc, galle
           })}
         </div>
       )}
+
+      {/* 分页控件 */}
+      {galleryTotal > galleryPageSize && (
+        <div className="flex items-center justify-center gap-3 py-6">
+          <button
+            onClick={() => onPageChange(0)}
+            disabled={galleryPage === 0}
+            className="p-2 rounded-xl bg-slate-100 hover:bg-slate-200 disabled:opacity-30 disabled:cursor-not-allowed transition-all"
+            title="第一页"
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="m11 17-5-5 5-5"/><path d="m18 17-5-5 5-5"/></svg>
+          </button>
+          <button
+            onClick={() => onPageChange(galleryPage - 1)}
+            disabled={galleryPage === 0}
+            className="p-2 rounded-xl bg-slate-100 hover:bg-slate-200 disabled:opacity-30 disabled:cursor-not-allowed transition-all"
+            title="上一页"
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="m15 18-6-6 6-6"/></svg>
+          </button>
+          <span className="text-sm font-bold text-slate-600 px-4 py-2 bg-slate-50 rounded-xl border border-slate-200">
+            第 {galleryPage + 1} / {Math.ceil(galleryTotal / galleryPageSize)} 页
+            <span className="text-slate-400 ml-2 font-normal">共 {galleryTotal} 张</span>
+          </span>
+          <button
+            onClick={() => onPageChange(galleryPage + 1)}
+            disabled={galleryPage >= Math.ceil(galleryTotal / galleryPageSize) - 1}
+            className="p-2 rounded-xl bg-slate-100 hover:bg-slate-200 disabled:opacity-30 disabled:cursor-not-allowed transition-all"
+            title="下一页"
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="m9 18 6-6-6-6"/></svg>
+          </button>
+          <button
+            onClick={() => onPageChange(Math.ceil(galleryTotal / galleryPageSize) - 1)}
+            disabled={galleryPage >= Math.ceil(galleryTotal / galleryPageSize) - 1}
+            className="p-2 rounded-xl bg-slate-100 hover:bg-slate-200 disabled:opacity-30 disabled:cursor-not-allowed transition-all"
+            title="最后一页"
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="m13 17 5-5-5-5"/><path d="m6 17 5-5-5-5"/></svg>
+          </button>
+        </div>
+      )}
     </div>
 
-      {/* 底部悬浮工具栏 */}
       {Object.values(selected).some(Boolean) && (
         <div className="fixed bottom-10 left-1/2 -translate-x-1/2 z-[100] animate-in slide-in-from-bottom-10 fade-in duration-500">
           <div className="bg-slate-900/90 backdrop-blur-xl border border-white/10 px-8 py-4 rounded-[3rem] shadow-[0_20px_50px_rgba(0,0,0,0.3)] flex items-center gap-8 text-white min-w-[400px]">
@@ -269,6 +314,7 @@ const GalleryPage: React.FC<GalleryPageProps> = ({ galleryImages, sendIpc, galle
               onClick={() => {
                 sendIpc("delete_image", confirmDeleteName);
                 setConfirmDeleteName(null);
+                onPageChange(0);
               }}
               className="flex-1 py-3 bg-red-500 hover:bg-red-600 text-white rounded-2xl font-bold transition-all"
             >
@@ -307,6 +353,7 @@ const GalleryPage: React.FC<GalleryPageProps> = ({ galleryImages, sendIpc, galle
                 sendIpc("delete_images", confirmBulkDelete);
                 setConfirmBulkDelete(null);
                 setSelected({});
+                onPageChange(0);
               }}
               className="flex-1 py-3 bg-red-500 hover:bg-red-600 text-white rounded-2xl font-bold transition-all"
             >
