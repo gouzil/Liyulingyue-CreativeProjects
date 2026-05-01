@@ -1,412 +1,375 @@
 ---
 name: ernie-image-skill-creator
-description: Create skills for generating images using AI text-to-image models. Specialized for creating skills that generate visual cards, templates, and compositions with structured layouts. Use when users want to create skills for generating recipe cards, visual templates, social media graphics, presentations, business cards, or any image composition with customizable layouts and styles.
+description: 使用AI文生图模型创建图片生成技能。专门用于创建生成视觉卡片、模板和构图的技能，支持自定义布局和样式。当用户想要创建食谱卡片、视觉模板、社交媒体图片、演示文稿、名片或任何可自定义布局的图片构图技能时使用。
 ---
 
 # Ernie Image Skill Creator
 
-A specialized skill creator for building skills that generate images using AI text-to-image models. This skill focuses on creating structured visual compositions with customizable layouts and styles.
+一个专门用于创建文生图技能的工具，基于Ernie Image API，可用于生成各种类型的视觉模板。
 
-## Core Concept
+## 核心概念
 
-Traditional skills generate text or code. This skill creates skills that generate **visual templates** - images with structured layouts that can be customized for various purposes:
-- Define layout structure with specific elements and positions
-- Apply visual styles (modern, rustic, elegant, etc.)
-- Generate consistent, professional-looking images based on user requirements
+传统技能生成文本或代码。本技能创建的技能生成**视觉模板**——具有结构化布局的图片，可以根据各种需求进行自定义：
+- 定义包含特定元素和位置的布局结构
+- 应用视觉样式（现代、复古、优雅等）
+- 根据用户需求生成一致、专业的图片
 
-## When to Use This Skill
+## 适用场景
 
-Use this skill when users want to:
-1. Create a skill for generating visual cards or templates
-2. Build skills that combine AI-generated imagery with user content
-3. Design skills for recipe cards, social media posts, presentations, etc.
-4. Create skills that optimize text-to-image prompts for specific visual styles
+当用户想要：
+1. 创建生成视觉卡片或模板的技能
+2. 构建将AI生成图像与用户内容结合的技能
+3. 设计食谱卡片、社交媒体帖子、演示文稿等技能
+4. 创建针对特定视觉样式优化文生图提示词的技能
 
-## Applicable Scenarios
+## 应用场景
 
-This skill creator can be used to build various image generation skills, including but not limited to:
+本技能创建工具可用于创建各种图片生成技能，包括但不限于：
 
-| Scenario | Example | Description |
-|----------|---------|-------------|
-| **Recipe Cards** | recipe-card-generator | Built-in example, generates recipe cards with ingredients and steps |
-| **Social Media Posts** | social-media-post | Generate social media images with captions, hashtags, and decorative elements |
-| **Presentation Slides** | presentation-slide | Generate slide templates with titles, content, and visual elements |
-| **Business Cards** | business-card | Generate business card templates with logo, name, and contact info |
-| **Event Invitations** | event-invitation | Generate invitation templates with event details and decorative elements |
-| **Product Showcases** | product-showcase | Generate product showcase cards with product images and descriptions |
-| **Certificates** | certificate | Generate certificate templates with names, dates, and decorative borders |
-| **Posters** | poster | Generate poster templates with titles, images, and text |
+| 场景 | 示例 | 说明 |
+|------|------|------|
+| **食谱卡片** | recipe-card-generator | 内置示例，生成带有食材清单和步骤的食谱卡片 |
+| **社交媒体帖子** | social-media-post | 生成带有标题、标签和装饰元素的社交媒体图片 |
+| **演示文稿幻灯片** | presentation-slide | 生成带有标题、内容和视觉元素的幻灯片模板 |
+| **名片** | business-card | 生成带有Logo、姓名和联系方式的名片模板 |
+| **活动邀请函** | event-invitation | 生成带有活动详情和装饰元素的邀请函模板 |
+| **产品展示** | product-showcase | 生成带有产品图片和描述的展示卡片 |
+| **证书模板** | certificate | 生成带有姓名、日期和装饰边框的证书模板 |
+| **海报** | poster | 生成带有标题、图片和文字的海报模板 |
 
-Each skill can define its own layout structure, visual style, and customization options based on specific requirements.
+每个技能可以根据具体需求定义自己的布局结构、视觉样式和自定义选项。
 
-## Creating an Image Generation Skill
+## 创建图片生成技能
 
-### Step 1: Understand the Visual Template
+### 步骤1：理解视觉模板
 
-First, clarify what the user wants to create:
-1. What is the purpose of the image? (recipe card, social media post, etc.)
-2. What should be in the center/user-editable area?
-3. What should surround the center? (ingredients, steps, decorations)
-4. What visual style is desired? (realistic, cartoon, minimalist, etc.)
+首先，明确用户想要创建什么：
+1. 图片的用途是什么？（食谱卡片、社交媒体帖子等）
+2. 中心/用户可编辑区域应该放什么？
+3. 中心周围应该环绕什么？（食材、步骤、装饰）
+4. 需要什么视觉样式？（写实、卡通、极简等）
 
-### Step 2: Design the Layout Structure
+### 步骤2：设计布局结构
 
-Create a clear layout description:
+创建清晰的布局描述：
 ```
 +---------------------------+
-|      Background/Border    |
+|        背景/边框          |
 |  +---------------------+  |
-|  |   Surrounding Area  |  |
+|  |     周围区域        |  |
 |  |  +---------------+  |  |
-|  |  | User Content  |  |  |
-|  |  |   (Center)    |  |  |
+|  |  |  用户内容     |  |  |
+|  |  |   (中心)      |  |  |
 |  |  +---------------+  |  |
-|  |   More Surrounding  |  |
+|  |    更多周围内容      |  |
 |  +---------------------+  |
-|      Background/Border    |
+|        背景/边框          |
 +---------------------------+
 ```
 
-### Step 3: Create the SKILL.md
+### 步骤3：创建SKILL.md
 
-The skill should include:
+技能应包含：
 
-#### Frontmatter
+#### 前置信息
 ```yaml
 ---
-name: [skill-name]
-description: [Detailed description including when to use this skill, what it generates, and specific phrases that should trigger it. Be "pushy" about triggering.]
+name: [技能名称]
+description: [详细描述，包括何时使用此技能、它生成什么、以及应该触发它的特定短语]
 ---
 ```
 
-#### Layout Specification
-Define the exact layout with:
-- **Center area**: Dimensions, position, what goes here (user's photo/content)
-- **Surrounding elements**: What goes around the center (ingredients, steps, decorations)
-- **Style guidelines**: Colors, fonts, visual style
+#### 布局规格
+定义精确的布局：
+- **中心区域**：尺寸、位置、放什么（用户的照片/内容）
+- **周围元素**：环绕中心的内容（食材、步骤、装饰）
+- **样式指南**：颜色、字体、视觉样式
 
-#### Prompt Engineering
-Include optimized prompts for the text-to-image model:
-- Base prompt for the overall composition
-- Specific prompts for different sections
-- Negative prompts to avoid common issues
+#### 提示词工程
+包含针对文生图模型的优化提示词：
+- 整体构图的基础提示词
+- 针对不同区域的特定提示词
+- 避免常见问题的负面提示词
 
-#### Customization Parameters
-Define what users can customize:
-- Content for the center area
-- Specific surrounding elements
-- Color schemes, styles
-- Text overlays
+#### 自定义参数
+定义用户可以自定义的内容：
+- 中心区域的内容
+- 特定的周围元素
+- 配色方案、样式
+- 文字覆盖
 
-### Step 4: Create Template Examples
+### 步骤4：创建模板示例
 
-For common use cases, create template files:
+对于常见用例，创建模板文件：
 
-#### Recipe Card Template
+#### 食谱卡片模板
 ```
-Center: Empty plate/dish area for user's food photo
-Surrounding: 
-- Top: Recipe title
-- Left: Ingredient list with icons
-- Right: Step-by-step instructions
-- Bottom: Preparation time, servings
-```
-
-#### Social Media Post Template
-```
-Center: User's photo/graphic area
-Surrounding:
-- Top: Caption/headline
-- Bottom: Hashtags, call-to-action
-- Sides: Decorative elements
+中心：空盘子/菜肴区域，用于放置用户的美食照片
+周围：
+- 顶部：菜谱标题
+- 左侧：食材清单和图标
+- 右侧：分步操作说明
+- 底部：准备时间、份量
 ```
 
-### Step 5: Implement Prompt Optimization
+#### 社交媒体帖子模板
+```
+中心：用户的照片/图片区域
+周围：
+- 顶部：标题/副标题
+- 底部：话题标签、行动号召
+- 两侧：装饰元素
+```
 
-The skill should guide users through:
-1. **Initial prompt creation**: Based on their requirements
-2. **Iterative refinement**: Testing and improving prompts
-3. **Style consistency**: Ensuring generated images match the desired aesthetic
-4. **Composition control**: Ensuring the center area remains clear for user content
+### 步骤5：实现提示词优化
 
-## Example Skills
+技能应引导用户完成：
+1. **初始提示词创建**：基于他们的需求
+2. **迭代优化**：测试和改进提示词
+3. **样式一致性**：确保生成的图片符合预期美学
+4. **构图控制**：确保中心区域保持清晰（如果需要）
 
-This skill creator can be used to build various image generation skills. Here are some examples:
+## 示例：食谱卡片技能
 
-### Example 1: Recipe Card Skill
-[Full example below]
+以下是创建食谱卡片技能的方法：
 
-### SKILL.md Structure
+### SKILL.md结构
 ```markdown
 ---
 name: recipe-card-generator
-description: Generate beautiful recipe cards with designated areas for your food photos. Creates professional-looking cards with ingredients list, cooking steps, and a central area for your actual dish photo. Use when users mention recipe cards, cooking guides, food templates, or want to document their recipes visually.
+description: 生成精美的食谱卡片，带有用于放置美食照片的指定区域。创建带有食材清单、烹饪步骤和中央区域的专业卡片。
 ---
 
-# Recipe Card Generator
+# 食谱卡片生成器
 
-## What This Skill Does
-Generates recipe card templates where users can place their own food photos in the center, surrounded by ingredients and cooking instructions.
+## 功能说明
+生成食谱卡片模板，用户可以将自己的美食照片放在中央，周围环绕食材和烹饪说明。
 
-## Layout Structure
-- **Center**: Empty plate/dish area (user places their photo here)
-- **Top**: Recipe title with decorative elements
-- **Left**: Ingredient list with measurements
-- **Right**: Step-by-step cooking instructions
-- **Bottom**: Preparation time, cooking time, servings
+## 布局结构
+- **中心**：空盘子/菜肴区域（用户在此放置照片）
+- **顶部**：带有装饰元素的菜谱标题
+- **左侧**：带有计量单位的食材清单
+- **右侧**：分步烹饪说明
+- **底部**：准备时间、烹饪时间、份量
 
-## Prompt Templates
+## 提示词模板
 
-### Base Prompt
-"Professional recipe card template, clean white background, elegant typography, [cuisine type] recipe layout, center area left empty for food photo, surrounded by ingredient list and cooking steps, high quality, print-ready"
+### 基础提示词
+"专业食谱卡片模板，简洁白色背景，优雅排版，[菜系]食谱布局，中央区域留空用于放置美食照片，周围环绕食材清单和烹饪步骤，高质量，可打印"
 
-### Style Variations
-- **Modern**: "minimalist design, sans-serif fonts, clean lines"
-- **Rustic**: "vintage paper texture, handwritten-style fonts, warm colors"
-- **Elegant**: "gourmet presentation, serif fonts, gold accents"
+### 样式变体
+- **现代**："极简设计，无衬线字体，简洁线条"
+- **复古**："复古纸张纹理，手写字体，温暖色调"
+- **优雅**："美食展示，衬线字体，金色点缀"
 
-## Customization
-Users can specify:
-1. Cuisine type (Italian, Chinese, Mexican, etc.)
-2. Visual style (modern, rustic, elegant, playful)
-3. Color scheme
-4. Specific ingredients to highlight
-5. Number of steps
+## 自定义
+用户可以指定：
+1. 菜系类型（意大利、中国、墨西哥等）
+2. 视觉样式（现代、复古、优雅、活泼）
+3. 配色方案
+4. 要突出的特定食材
+5. 步骤数量
 
-## Generation Process
-1. User provides recipe name and ingredients
-2. Skill optimizes prompt for chosen style
-3. Generate image with clear center area
-4. User places their food photo in the center
-5. Final card is ready to share
+## 生成流程
+1. 用户提供菜谱名称和食材
+2. 技能为选定样式优化提示词
+3. 生成带有清晰中心区域的图片
+4. 用户将美食照片放在中央
+5. 最终卡片即可分享
 ```
 
-### Example 2: Social Media Post Skill
+## 高级功能
 
-Create a skill for generating social media post templates:
-- **Center**: User's photo/graphic area
-- **Top**: Caption/headline
-- **Bottom**: Hashtags, call-to-action
-- **Sides**: Decorative elements
+### 多图层合成
+对于复杂模板，考虑生成多个图层：
+1. 背景图层
+2. 周围元素图层
+3. 中心占位图层
+用户将这些与自己的内容组合。
 
-### Example 3: Presentation Slide Skill
+### 模板库
+创建预设模板库：
+- 食谱卡片（早餐、午餐、晚餐、甜点）
+- 社交媒体帖子（Instagram、Facebook、Twitter）
+- 演示文稿幻灯片
+- 名片
+- 活动邀请函
 
-Create a skill for generating presentation slide templates:
-- **Center**: Main content area
-- **Top**: Title and subtitle
-- **Bottom**: Key points or summary
-- **Sides**: Visual elements and branding
+### 样式迁移
+允许用户：
+- 上传参考图片获取样式
+- 从预定义样式中选择
+- 混合多种样式
 
-### Example 4: Business Card Skill
+## 测试技能
 
-Create a skill for generating business card templates:
-- **Center**: Logo or visual element
-- **Top**: Name and title
-- **Bottom**: Contact information
-- **Sides**: Professional design elements
+### 测试用例
+创建测试提示词来验证：
+1. 中心区域是否对用户内容保持清晰
+2. 周围元素是否正确放置
+3. 视觉样式是否符合规格
+4. 文字是否清晰可读且位置合理
+5. 整体构图是否平衡
 
-### Example 5: Event Invitation Skill
+### 评估标准
+- **中心清晰度**：中心区域是否明确定义且为空？
+- **元素放置**：周围元素是否正确定位？
+- **样式一致性**：输出是否符合请求的样式？
+- **文字可读性**：所有文字是否清晰可读？
+- **整体平衡**：构图是否视觉平衡？
 
-Create a skill for generating event invitation templates:
-- **Center**: Event details or photo
-- **Top**: Event title
-- **Bottom**: RSVP information
-- **Sides**: Decorative elements matching event theme
+## 资源
 
-## Advanced Features
+### 模板文件
+在 `assets/templates/` 中创建常见用例的模板文件。
 
-### Multi-Image Composition
-For complex templates, consider generating multiple layers:
-1. Background layer
-2. Surrounding elements layer
-3. Center placeholder layer
-User combines these with their own content.
+### 提示词库
+在 `references/prompts.md` 中存储针对不同样式和布局的优化提示词。
 
-### Template Library
-Create a library of pre-designed templates:
-- Recipe cards (breakfast, lunch, dinner, desserts)
-- Social media posts (Instagram, Facebook, Twitter)
-- Presentation slides
-- Business cards
-- Event invitations
+### 样式指南
+在 `references/styles.md` 中包含样式指南以确保一致的视觉输出。
 
-### Style Transfer
-Allow users to:
-- Upload a reference image for style
-- Choose from predefined styles
-- Mix multiple styles
-
-## Testing the Skill
-
-### Test Cases
-Create test prompts that verify:
-1. Center area remains clear for user content
-2. Surrounding elements are properly placed
-3. Visual style matches specifications
-4. Text is readable and well-positioned
-5. Overall composition is balanced
-
-### Evaluation Criteria
-- **Center clarity**: Is the center area clearly defined and empty?
-- **Element placement**: Are surrounding elements properly positioned?
-- **Style consistency**: Does the output match the requested style?
-- **Text readability**: Is all text clear and legible?
-- **Overall balance**: Is the composition visually balanced?
-
-## Resources
-
-### Template Files
-Create template files in `assets/templates/` for common use cases.
-
-### Prompt Library
-Store optimized prompts in `references/prompts.md` for different styles and layouts.
-
-### Style Guides
-Include style guides in `references/styles.md` for consistent visual output.
-
-## API Integration
+## API集成
 
 ### Ernie Image API
-This skill uses the Ernie Image API via OpenAI-compatible protocol. The API is accessed through the `openai` Python package.
+本技能通过OpenAI兼容协议使用Ernie Image API。API通过 `openai` Python包访问。
 
-#### API Configuration
+#### API配置
 - **Base URL**: `https://aistudio.baidu.com/llm/lmapi/v3`
 - **Model**: `ernie-image-turbo`
-- **Authentication**: API key from [Baidu AIStudio](https://aistudio.baidu.com/account/accessToken)
+- **认证**: 从 [Baidu AIStudio](https://aistudio.baidu.com/account/accessToken) 获取API密钥
 
-#### Environment Setup
+#### 环境配置
 
-**IMPORTANT: Check for virtual environment first!**
-
-Before running any scripts, check if a `.venv` virtual environment exists in the current directory:
+**重要：请先检测虚拟环境！**
 
 ```bash
-# Check if .venv exists
+# 检测并激活虚拟环境（如果存在）
 if [ -d ".venv" ]; then
-    echo "Found .venv virtual environment, activating..."
+    echo "检测到 .venv 虚拟环境，正在激活..."
     source .venv/bin/activate
 fi
 
-# Install dependencies
+# 安装依赖
 pip install openai Pillow numpy
 
-# Set API key
+# 设置API密钥
 export BAIDU_API_KEY="your_api_key"
 ```
 
-Or manually:
-1. Check for `.venv`: `ls -la | grep .venv`
-2. If exists, activate: `source .venv/bin/activate`
-3. Install dependencies: `pip install openai Pillow numpy`
-4. Set API key: `export BAIDU_API_KEY="your_api_key"`
-5. Or pass via parameter: `--api_key your_api_key`
+或手动操作：
+1. 检测 `.venv`：`ls -la | grep .venv`
+2. 如果存在，激活：`source .venv/bin/activate`
+3. 安装依赖：`pip install openai Pillow numpy`
+4. 设置API密钥：`export BAIDU_API_KEY="your_api_key"`
+5. 或通过参数传递：`--api_key your_api_key`
 
-### Using the Scripts
+### 使用脚本
 
-#### Image Generation Script
+#### 图片生成脚本
 ```bash
-# Basic usage
+# 基本使用
 python scripts/generate_image.py "Your prompt here" --save_path output.png
 
-# With style optimization
+# 使用样式优化
 python scripts/generate_image.py "Recipe card for Italian pasta" \
     --optimized --style modern --cuisine_type Italian \
     --save_path recipe_card.png
 
-# Batch generation
+# 批量生成
 python scripts/generate_image.py "Prompt 1" "Prompt 2" --output_dir batch_output
 ```
 
-#### Recipe Template Generator
+#### 食谱模板生成器
 ```bash
-# Generate recipe card template
+# 生成食谱卡片模板
 python scripts/generate_recipe_template.py "Italian" \
     --style elegant --color-scheme warm \
     --output_dir templates/
 
-# Generate JSON specification
+# 生成JSON规格
 python scripts/generate_recipe_template.py "Chinese" \
     --style rustic --json
 ```
 
-#### Image Validation
+#### 图片验证
 ```bash
-# Validate center area clarity
+# 验证中心区域清晰度
 python scripts/validate_image.py generated_image.png --verbose
 
-# Check composition quality
+# 检查构图质量
 python scripts/validate_image.py recipe_card.png --center-ratio 0.5
 ```
 
-## Creating a Complete Skill
+## 创建完整技能
 
-### Step 1: Define the Skill Structure
+### 步骤1：定义技能结构
 ```
 my-image-skill/
 ├── SKILL.md
 ├── scripts/
-│   ├── generate.py          # Main generation script
-│   └── validate.py          # Validation script
+│   ├── generate.py          # 主生成脚本
+│   └── validate.py          # 验证脚本
 ├── assets/
-│   └── templates/           # Pre-designed templates
+│   └── templates/           # 预设模板
 └── references/
-    ├── prompts.md           # Optimized prompts
-    └── styles.md            # Style guides
+    ├── prompts.md           # 优化提示词
+    └── styles.md            # 样式指南
 ```
 
-### Step 2: Write the SKILL.md
-Include:
-- Clear description of what the skill generates
-- Layout specifications with center area definition
-- Prompt templates for different variations
-- Customization parameters
-- API integration instructions
+### 步骤2：编写SKILL.md
+包含：
+- 技能生成内容的清晰描述
+- 布局规格和区域定义
+- 不同变体的提示词模板
+- 自定义参数
+- API集成说明
 
-### Step 3: Create Generation Scripts
-Use the provided scripts as templates:
-- `scripts/generate_image.py` - Core image generation
-- `scripts/generate_recipe_template.py` - Recipe-specific generation
-- `scripts/validate_image.py` - Quality validation
+### 步骤3：创建生成脚本
+使用提供的脚本作为模板：
+- `scripts/generate_image.py` - 核心图片生成
+- `scripts/generate_recipe_template.py` - 食谱特定生成
+- `scripts/validate_image.py` - 质量验证
 
-### Step 4: Test and Iterate
-1. Generate test images with various parameters
-2. Validate center area clarity
-3. Refine prompts based on results
-4. Create template library
+### 步骤4：测试和迭代
+1. 使用各种参数生成测试图片
+2. 验证中心区域清晰度
+3. 根据结果优化提示词
+4. 创建模板库
 
-## Quick Skill Creation
+## 快速创建技能
 
-For rapid skill creation, use the `create_new_skill.py` script:
+使用 `create_new_skill.py` 脚本快速创建技能：
 
 ```bash
-# Create a new skill with default settings
+# 使用默认设置创建新技能
 python scripts/create_new_skill.py "my-recipe-card-skill" \
-    --description "Generate recipe cards with designated areas for food photos"
+    --description "生成带有食物照片指定区域的食谱卡片"
 
-# Create a skill in a specific directory
+# 在特定目录创建技能
 python scripts/create_new_skill.py "social-media-template" \
-    --description "Generate social media post templates" \
+    --description "生成社交媒体帖子模板" \
     --output_dir /path/to/skills
 ```
 
-This script automatically:
-1. Creates the directory structure
-2. Copies core scripts (generate_image.py, validate_image.py)
-3. Copies reference files (prompts.md, styles.md)
-4. Creates SKILL.md with proper frontmatter
-5. Creates an example generation script
-6. Creates a README.md with usage instructions
+此脚本自动：
+1. 创建目录结构
+2. 复制核心脚本（generate_image.py, validate_image.py）
+3. 复制参考文件（prompts.md, styles.md）
+4. 创建带有正确前置信息的SKILL.md
+5. 创建示例生成脚本
+6. 创建带有使用说明的README.md
 
-## Tips for Success
+## 成功秘诀
 
-1. **Keep prompts specific**: Include exact dimensions, positions, and styles
-2. **Test with real content**: Use actual photos to verify center area works
-3. **Iterate on style**: Refine prompts based on generated results
-4. **Consider user workflow**: Make it easy for users to add their content
-5. **Provide examples**: Show examples of completed cards with user content added
-6. **Validate outputs**: Use validation scripts to ensure quality
-7. **Document API usage**: Clear instructions for API setup and configuration
+1. **保持提示词具体**：包含精确的尺寸、位置和样式
+2. **用真实内容测试**：使用实际照片验证效果
+3. **迭代优化样式**：根据生成结果优化提示词
+4. **考虑用户工作流**：让用户轻松添加自己的内容
+5. **提供示例**：展示完成的卡片示例
+6. **验证输出**：使用验证脚本确保质量
+7. **记录API使用**：提供清晰的API设置和配置说明
 
 ---
 
-**Remember**: The goal is to create skills that generate beautiful, functional templates where users can easily add their own content to create professional-looking visual cards.
+**记住**：目标是创建能够生成美观、实用模板的技能，用户可以轻松添加自己的内容来创建专业的视觉卡片。

@@ -1,115 +1,150 @@
-# Recipe Card Generator
+# 食谱卡片生成器
 
-A skill for generating beautiful recipe card templates with designated areas for your food photos.
+生成精美的食谱卡片模板，中心区域可放置您的美食照片，周围环绕食材清单和烹饪步骤。
 
-## Features
+## 功能特点
 
-- **Professional Templates**: Generate high-quality recipe card templates
-- **Center Area**: Clear space in the center for your actual food photos
-- **Customizable Styles**: Modern, rustic, elegant, and playful designs
-- **Multiple Cuisines**: Support for various cuisine types
-- **Quality Validation**: Tools to verify template quality
+- **专业模板**：生成高质量食谱卡片模板
+- **中心留白**：中心区域清晰空白，用于放置您的美食照片
+- **多样样式**：支持现代、复古、优雅、活泼等设计风格
+- **多菜系**：支持意大利、中国、墨西哥、日本等多种菜系
+- **质量验证**：内置工具验证模板质量
 
-## Quick Start
+## 快速开始
 
-### Prerequisites
+### 前置条件
 
-1. **Python 3.7+**
-2. **Dependencies**: `pip install openai Pillow numpy`
-3. **API Key**: Get your key from [Baidu AIStudio](https://aistudio.baidu.com/account/accessToken)
+1. Python 3.7+
+2. 依赖包：`pip install openai Pillow numpy`
+3. API 密钥：从 [Baidu AIStudio](https://aistudio.baidu.com/account/accessToken) 获取
 
-### Setup
+### 环境配置（重要）
+
+**请先检测虚拟环境！**
 
 ```bash
-# Set your API key
-export BAIDU_API_KEY="your_api_key_here"
+# 检测并激活虚拟环境（如果存在）
+if [ -d ".venv" ]; then
+    echo "检测到 .venv 虚拟环境，正在激活..."
+    source .venv/bin/activate
+fi
 
-# Navigate to the skill directory
+# 安装依赖
+pip install openai Pillow numpy
+
+# 设置 API 密钥
+export BAIDU_API_KEY="your_api_key"
+
+# 进入技能目录
 cd recipe-card-generator
 ```
 
-### Generate a Recipe Card
+### 生成食谱卡片
 
 ```bash
-# Generate Italian recipe card with modern style
+# 生成意大利食谱卡片（现代风格）
 python scripts/generate_recipe_template.py "Italian" \
     --style modern \
     --color-scheme warm \
     --output_dir output/
 
-# Generate Chinese recipe card with rustic style
+# 生成中国食谱卡片（复古风格）
 python scripts/generate_recipe_template.py "Chinese" \
     --style rustic \
     --output_dir output/
 ```
 
-### Validate the Generated Image
+### 验证生成质量
 
 ```bash
-# Check if center area is clear for your food photo
+# 检查中心区域是否清晰
 python scripts/validate_image.py output/italian_recipe_card.png --verbose
 ```
 
-## Layout Structure
+### 添加您的美食照片
+
+1. 打开生成的食谱卡片图片
+2. 将您的美食照片放置在中心区域
+3. 添加菜名、食材清单和烹饪步骤文字
+4. 保存并分享完成的食谱卡片
+
+## 布局结构
 
 ```
 +---------------------------+
-|      Recipe Title         |
+|         菜名标题          |
 |  +---------------------+  |
-|  | Ingredients | Steps |  |
-|  |    List     |       |  |
-|  |             |       |  |
+|  | 食材清单 | 烹饪步骤 |  |
+|  |         |          |  |
 |  |  +---------------+  |  |
-|  |  | Your Food     |  |  |
-|  |  | Photo Here    |  |  |
+|  |  |   您的美食    |  |  |
+|  |  |   照片位置    |  |  |
 |  |  +---------------+  |  |
-|  |             |       |  |
+|  |         |          |  |
 |  +---------------------+  |
-|   Prep Time | Servings    |
+|   准备时间 |  份量        |
 +---------------------------+
 ```
 
-## Customization Options
+## 自定义选项
 
-### Cuisine Types
-- Italian, Chinese, Mexican, Japanese, Indian
-- French, Thai, Mediterranean, American, Korean
+### 菜系类型
 
-### Visual Styles
-- **Modern**: Clean lines, sans-serif fonts, minimalist
-- **Rustic**: Vintage texture, handwritten fonts, warm tones
-- **Elegant**: Serif fonts, gold accents, premium feel
-- **Playful**: Bright colors, rounded shapes, fun typography
+| 菜系 | 英文名称 |
+|------|----------|
+| 意大利 | Italian |
+| 中国 | Chinese |
+| 墨西哥 | Mexican |
+| 日本 | Japanese |
+| 印度 | Indian |
+| 法国 | French |
+| 泰国 | Thai |
+| 地中海 | Mediterranean |
 
-### Color Schemes
-- **Warm**: Earth tones, golden accents, cozy atmosphere
-- **Cool**: Blues and greens, fresh, calm
-- **Neutral**: Grays and beiges, professional, balanced
-- **Vibrant**: Bright, saturated, eye-catching
+### 视觉样式
 
-## Example Commands
+| 样式 | 描述 |
+|------|------|
+| **现代 (modern)** | 简洁线条，无衬线字体，极简主义 |
+| **复古 (rustic)** | 复古纹理，手写字体，温暖色调 |
+| **优雅 (elegant)** | 衬线字体，金色点缀，高端质感 |
+| **活泼 (playful)** | 明亮色彩，圆润形状，趣味排版 |
 
-### Basic Recipe Card
+### 配色方案
+
+| 方案 | 描述 |
+|------|------|
+| **暖色 (warm)** | 大地色调，金色点缀，温馨氛围 |
+| **冷色 (cool)** | 蓝绿色调，清新自然 |
+| **中性 (neutral)** | 灰米色调，专业平衡 |
+| **鲜艳 (vibrant)** | 明亮饱和，引人注目 |
+
+## 使用示例
+
+### 基础食谱卡片
+
 ```bash
 python scripts/generate_recipe_template.py "Italian" \
     --style modern \
     --output_dir output/
 ```
 
-### Advanced Recipe Card
+### 高级食谱卡片
+
 ```bash
 python scripts/generate_recipe_template.py "Japanese" \
     --style elegant \
     --color-scheme cool \
     --center-ratio 0.5 \
     --num-steps 8 \
-    --custom-elements "nutritional-info" "cooking-tips" \
+    --custom-elements "营养信息" "烹饪技巧" \
     --output_dir output/
 ```
 
-### Batch Generation
+### 批量生成
+
 ```bash
-# Generate multiple recipe cards
+# 生成多种菜系的食谱卡片
 for cuisine in Italian Chinese Mexican Japanese; do
     python scripts/generate_recipe_template.py "$cuisine" \
         --style modern \
@@ -117,123 +152,132 @@ for cuisine in Italian Chinese Mexican Japanese; do
 done
 ```
 
-## Validation and Quality Control
+## 质量验证
 
-### Center Area Validation
-The validation script checks:
-- **Clear center**: Is the center area empty and ready for your photo?
-- **Good contrast**: Is text readable?
-- **Balanced composition**: Is the layout visually balanced?
-- **Proper aspect ratio**: Is the card properly proportioned?
+### 验证内容
 
-### Quality Checklist
-- [ ] Center area is clear for food photo
-- [ ] Text is readable and well-positioned
-- [ ] Visual style matches specification
-- [ ] Composition is balanced
-- [ ] Colors are harmonious
+- **中心区域清晰度**：中心是否空白可用于放置照片
+- **对比度**：文字是否清晰可读
+- **构图平衡**：布局是否视觉平衡
+- **宽高比**：卡片比例是否合适
 
-## File Structure
+### 质量检查清单
+
+- [ ] 中心区域清晰可用于放置美食照片
+- [ ] 文字清晰可读且位置合理
+- [ ] 视觉风格符合预期
+- [ ] 构图平衡协调
+- [ ] 色彩和谐统一
+
+## 目录结构
 
 ```
 recipe-card-generator/
-├── SKILL.md                    # Skill documentation
-├── README.md                   # This file
+├── SKILL.md                    # 技能文档
+├── README.md                   # 中文说明文档
+├── README_en.md                # 英文说明文档
 ├── scripts/
-│   ├── generate_image.py       # Core image generation
-│   ├── generate_recipe_template.py  # Recipe template generator
-│   ├── validate_image.py       # Image validation
-│   └── test_skill.py           # Test script
+│   ├── generate_image.py       # 核心图片生成脚本
+│   ├── generate_recipe_template.py  # 食谱卡片模板生成器
+│   ├── validate_image.py       # 图片验证脚本
+│   └── test_skill.py           # 测试脚本
 ├── assets/
-│   └── templates/              # Pre-designed templates
+│   └── templates/              # 预设模板
 └── references/
-    ├── prompts.md              # Optimized prompts
-    └── styles.md               # Style guides
+    ├── prompts.md              # 优化的提示词库
+    └── styles.md               # 样式指南
 ```
 
-## API Integration
+## API 配置
 
 ### Ernie Image API
-This skill uses the Ernie Image API via OpenAI-compatible protocol.
 
-#### Configuration
 - **Base URL**: `https://aistudio.baidu.com/llm/lmapi/v3`
 - **Model**: `ernie-image-turbo`
-- **Authentication**: API key from Baidu AIStudio
+- **认证**: Baidu AIStudio API Key
 
-#### Supported Image Sizes
-- 1024x1024 (square)
-- 1376x768 (16:9 landscape)
-- 1264x848 (3:2 landscape)
-- 1200x896 (4:3 landscape)
-- 768x1376 (9:16 portrait)
-- 848x1264 (2:3 portrait)
-- 896x1200 (3:4 portrait)
+### 支持的图片尺寸
 
-## Troubleshooting
+| 尺寸 | 比例 |
+|------|------|
+| 1024x1024 | 正方形 |
+| 1376x768 | 16:9 横屏 |
+| 1264x848 | 3:2 横屏 |
+| 1200x896 | 4:3 横屏 |
+| 768x1376 | 9:16 竖屏 |
+| 848x1264 | 2:3 竖屏 |
+| 896x1200 | 3:4 竖屏 |
 
-### Common Issues
+## 常见问题
 
-**Center area is not clear**
-- Increase center ratio: `--center-ratio 0.5`
-- Simplify the prompt: focus on "center area completely empty"
-- Try a different style: some styles work better than others
-
-**Text is not readable**
-- Increase contrast in the prompt
-- Specify "high contrast text" in the prompt
-- Use simpler typography styles
-
-**Style doesn't match expectations**
-- Be more specific in style description
-- Use multiple style keywords
-- Test with different style combinations
-
-### API Issues
-
-**Authentication error**
-- Verify your API key is correct
-- Check if the key has expired
-- Ensure proper environment variable setup
-
-**Generation fails**
-- Check internet connection
-- Verify API endpoint is accessible
-- Try with a simpler prompt first
-
-## Testing
-
-Run the test script to verify everything is working:
+### 中心区域不够清晰
 
 ```bash
+# 方法1：增加中心区域比例
+--center-ratio 0.5
+
+# 方法2：在提示词中强调
+"center area completely empty and clear"
+```
+
+### 文字不可读
+
+在提示词中添加：
+```
+high contrast text, clear typography, readable fonts
+```
+
+### 样式不符合预期
+
+```bash
+# 使用更具体的样式描述
+--style elegant --color-scheme warm
+```
+
+### API 认证失败
+
+```bash
+# 检查环境变量
+echo $BAIDU_API_KEY
+
+# 或显式传递
+--api_key your_api_key
+```
+
+## 测试
+
+```bash
+# 运行测试脚本
 python scripts/test_skill.py --verbose
 ```
 
-## Examples
+## 完整示例
 
-### Completed Recipe Card
-1. Generate: Italian recipe card, modern style
-2. Add: Photo of your pasta dish
-3. Add: Title "Spaghetti Carbonara"
-4. Add: Ingredients list
-5. Add: Cooking steps
-6. Result: Professional recipe card ready to share
+```bash
+# 1. 设置 API 密钥
+export BAIDU_API_KEY="your_api_key"
 
-### Recipe Collection
-Create a collection of recipe cards for different cuisines and styles.
+# 2. 生成意大利食谱卡片
+python scripts/generate_recipe_template.py "Italian" \
+    --style modern \
+    --color-scheme warm \
+    --output_dir output/
 
-## Support
+# 3. 验证生成质量
+python scripts/validate_image.py output/italian_recipe_card.png --verbose
 
-For issues or questions:
-1. Check the troubleshooting section
-2. Review the API documentation
-3. Test with simple prompts first
-4. Validate outputs with the validation script
+# 4. 在图片编辑软件中打开
+# 5. 将您的美食照片放置在中心区域
+# 6. 添加菜名、食材和步骤文字
+# 7. 保存并分享
+```
 
-## License
+## 相关文档
 
-This skill is provided as-is for educational and personal use.
+- [SKILL.md](SKILL.md) - 完整技能文档
+- [提示词库](references/prompts.md) - 优化的提示词模板
+- [样式指南](references/styles.md) - 视觉样式详解
 
----
+## 许可证
 
-**Remember**: The goal is to create beautiful, functional recipe cards where you can easily add your own food photos to create professional-looking visual recipes.
+MIT License
